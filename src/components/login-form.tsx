@@ -25,6 +25,7 @@ export function LoginForm() {
                     uid: user.uid,
                     email: user.email,
                     displayName: user.displayName,
+                    nomeLista: user.displayName || "",
                     photoURL: user.photoURL,
                     isAdmin: false,
                     createdAt: serverTimestamp(),
