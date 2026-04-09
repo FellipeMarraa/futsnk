@@ -402,7 +402,7 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
                                     </div>
 
                                     <h4 className="text-white font-black italic uppercase text-xl tracking-tight mb-1">{matchMVPName}</h4>
-                                    <Badge className="bg-amber-400 text-black font-black border-none px-4 py-1 rounded-full text-[10px]">
+                                    <Badge className="bg-amber-400 w-full text-black font-black border-none px-4 py-1 rounded-full text-[10px]">
                                         DESTAQUE DA RODADA
                                     </Badge>
                                 </Card>
