@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/auth-context"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Dialog, DialogContent, DialogTrigger, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import * as VisuallyHidden from "@radix-ui/react-visually-hidden"
+import {toast} from "@/components/ui/use-toast.ts";
 
 interface PlayerMeta {
     id: string;
@@ -20,7 +21,7 @@ interface PlayerMeta {
 }
 
 export function PlayerListManager({ groupId }: { groupId: string, isAdmin: boolean, currentMatchPlayers: string[] }) {
-    const { user, nomeLista: meuNomeNoPerfil } = useAuth()
+    const { user } = useAuth()
     const [playersMetadata, setPlayersMetadata] = useState<PlayerMeta[]>([])
     const [loading, setLoading] = useState(true)
     const [searchTerm, setSearchTerm] = useState("")
@@ -49,36 +50,47 @@ export function PlayerListManager({ groupId }: { groupId: string, isAdmin: boole
 
     useEffect(() => {
         const syncOfficialProfile = async () => {
-            if (!user || !meuNomeNoPerfil || loading) return;
+            if (!user || !user.nomeLista || loading) return;
 
             const officialId = user.uid;
+            const nomeParaMatch = user.nomeLista.toLowerCase().trim();
+            const nomeGoogle = user.displayName?.toLowerCase().trim() || "";
 
-            const ghostProfile = playersMetadata.find(p =>
-                p.nomeLista?.toLowerCase().trim() === meuNomeNoPerfil.toLowerCase().trim() &&
-                p.id !== officialId
-            );
+            const ghostProfile = playersMetadata.find(p => {
+                if (p.id === officialId) return false; // Ignora o próprio perfil oficial
 
+                const nomeNaLista = p.nomeLista?.toLowerCase().trim() || "";
+
+                return (
+                    nomeNaLista === nomeParaMatch ||           // Match exato com o apelido
+                    nomeGoogle.includes(nomeNaLista) ||        // O nome do Google contém o nome da lista
+                    nomeParaMatch.includes(nomeNaLista)        // O apelido contém o nome da lista
+                );
+            });
+
+            // 2. Se encontrar o "fantasma", faz o merge
             if (ghostProfile) {
                 try {
                     const officialRef = doc(db, "groups", groupId, "players_meta", officialId);
 
                     await setDoc(officialRef, {
-                        nomeLista: meuNomeNoPerfil,
-                        technique: ghostProfile.technique,
-                        speed: ghostProfile.speed,
-                        defense: ghostProfile.defense,
-                        finishing: ghostProfile.finishing,
+                        ...ghostProfile, // Copia as notas e estatísticas do fantasma
+                        nomeLista: user.nomeLista, // Mantém o apelido escolhido
                         userId: user.uid,
                         photoURL: user.photoURL,
                         updatedAt: new Date()
                     }, { merge: true });
 
                     await deleteDoc(doc(db, "groups", groupId, "players_meta", ghostProfile.id));
-                } catch (e) { console.error(e); }
+
+                    toast({ title: "PERFIL VINCULADO", description: `Suas notas de ${ghostProfile.nomeLista} foram recuperadas!` });
+                } catch (e) {
+                    console.error("Erro no Sync:", e);
+                }
             }
         };
         syncOfficialProfile();
-    }, [user, meuNomeNoPerfil, playersMetadata, groupId, loading]);
+    }, [user, playersMetadata, groupId, loading]);
 
     const calculateOVR = (p: PlayerMeta) => {
         const tec = Number(p.technique) || 50;

@@ -22,7 +22,6 @@ export function MatchRatingModal({ isOpen, onClose, match, currentUser, nomeList
     const [step, setStep] = useState(1)
     const [ratings, setRatings] = useState<Record<string, any>>({})
     const [selectedGeneral, setSelectedGeneral] = useState<string[]>([])
-    const [mvpChoice, setMvpChoice] = useState<string | null>(null) // NOVO: Estado para o Craque
     const [hasVoted, setHasVoted] = useState(false)
     const [checkingVote, setCheckingVote] = useState(true)
 
@@ -69,21 +68,18 @@ export function MatchRatingModal({ isOpen, onClose, match, currentUser, nomeList
     }
 
     const submitVotes = async () => {
-        if (hasVoted || !mvpChoice) {
-            toast({ variant: "destructive", title: "ESCOLHA O MVP", description: "Selecione quem foi o melhor da partida antes de finalizar." });
-            return;
-        }
+        if (hasVoted) return;
+
         try {
             const voteRef = doc(db, "groups", groupId, "matches", match.id, "technical_ratings", currentUser.uid)
 
             await setDoc(voteRef, {
                 ratings,
-                mvpChoice, // Salvando o Craque da Rodada aqui dentro
                 createdAt: serverTimestamp(),
                 isAnonymous: true
             })
 
-            toast({ title: "VOTOS ENVIADOS", description: "Avaliação técnica e MVP registrados!" })
+            toast({ title: "VOTOS ENVIADOS", description: "Suas avaliações definirão o MVP da rodada!" })
             setHasVoted(true)
             onClose()
         } catch (e) {
@@ -121,7 +117,7 @@ export function MatchRatingModal({ isOpen, onClose, match, currentUser, nomeList
                     <div>
                         <DialogTitle className="text-xl font-black italic uppercase text-primary tracking-tighter">Avaliação Técnica</DialogTitle>
                         <DialogDescription className="text-[9px] font-bold text-white/40 uppercase tracking-widest mt-1">
-                            {hasVoted ? "CONCLUÍDO" : (step === 1 ? "PASSO 1: SEU TIME" : "PASSO 2: CRAQUE E DESTAQUES")}
+                            {hasVoted ? "CONCLUÍDO" : (step === 1 ? "PASSO 1: SEU TIME" : "PASSO 2: DESTAQUES ADVERSÁRIOS")}
                         </DialogDescription>
                     </div>
                     <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full hover:bg-white/5"><X className="text-white/40"/></Button>
@@ -144,28 +140,12 @@ export function MatchRatingModal({ isOpen, onClose, match, currentUser, nomeList
                                 </div>
                             ) : (
                                 <div className="space-y-6 pb-8">
-                                    {/* SEÇÃO: ESCOLHA DO MVP */}
-                                    <div className="bg-primary/5 border border-primary/10 p-5 rounded-[2rem]">
-                                        <h4 className="text-primary font-black italic uppercase text-xs mb-4 flex items-center gap-2">
-                                            <Trophy className="size-4" /> Escolha o MVP da Partida
-                                        </h4>
-                                        <div className="grid grid-cols-2 gap-2">
-                                            {match.confirmedPlayers?.filter((n:string) => n.toLowerCase() !== nomeLista.toLowerCase()).map((name: string) => (
-                                                <Button
-                                                    key={name}
-                                                    variant="ghost"
-                                                    className={`h-12 rounded-xl border text-[10px] font-black uppercase italic transition-all ${mvpChoice === name ? 'bg-primary text-black border-primary' : 'bg-white/5 border-white/5 text-white/40'}`}
-                                                    onClick={() => setMvpChoice(name)}
-                                                >
-                                                    {name.split(' ')[0]}
-                                                </Button>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    {/* SEÇÃO: OUTROS DESTAQUES */}
+                                    {/* SEÇÃO: OUTROS DESTAQUES (OPCIONAL) */}
                                     <div className="space-y-3">
-                                        <h4 className="text-white/40 font-black italic uppercase text-[10px] px-2 tracking-widest">Avaliar outros atletas (Opcional - Máx 3)</h4>
+                                        <div className="flex items-center gap-2 mb-2 px-2">
+                                            <Trophy className="size-4 text-primary" />
+                                            <h4 className="text-white/40 font-black italic uppercase text-[10px] tracking-widest">Outros Jogadores (Opcional - Máx 3)</h4>
+                                        </div>
                                         {match.confirmedPlayers?.filter((n:string) => n.toLowerCase() !== nomeLista.toLowerCase()).map((name: string) => {
                                             const isSelected = selectedGeneral.includes(name);
                                             const isTeammate = teammates.some((t:any) => (t.name || t).toLowerCase() === name.toLowerCase());
@@ -189,6 +169,10 @@ export function MatchRatingModal({ isOpen, onClose, match, currentUser, nomeList
                                             )
                                         })}
                                     </div>
+
+                                    <p className="text-[9px] text-white/20 font-bold uppercase text-center mt-4 tracking-tighter px-10">
+                                        Suas notas alimentam o cálculo de performance que define o MVP da rodada.
+                                    </p>
                                 </div>
                             )}
                         </>
@@ -199,9 +183,9 @@ export function MatchRatingModal({ isOpen, onClose, match, currentUser, nomeList
                     <div className="p-6 bg-zinc-900/50 border-t border-white/5 flex gap-3 shrink-0">
                         {step === 2 && <Button onClick={() => setStep(1)} className="bg-white/5 text-white font-black uppercase text-[10px] h-12 rounded-xl px-6">Voltar</Button>}
                         {step === 1 ? (
-                            <Button disabled={!isTeammateStepComplete()} onClick={() => setStep(2)} className="flex-1 bg-primary text-black font-black uppercase text-xs h-12 rounded-xl">Próximo Passo</Button>
+                            <Button disabled={!isTeammateStepComplete()} onClick={() => setStep(2)} className="flex-1 bg-primary text-black font-black uppercase text-xs h-12 rounded-xl">Avaliar Outros jogadores</Button>
                         ) : (
-                            <Button disabled={!mvpChoice} onClick={submitVotes} className="flex-1 bg-emerald-600 text-white font-black uppercase text-xs h-12 rounded-xl">Finalizar Votação</Button>
+                            <Button onClick={submitVotes} className="flex-1 bg-emerald-600 text-white font-black uppercase text-xs h-12 rounded-xl">Finalizar Votação</Button>
                         )}
                     </div>
                 )}

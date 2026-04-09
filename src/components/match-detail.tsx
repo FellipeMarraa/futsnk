@@ -90,19 +90,8 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
         return () => { unsubMatch(); unsubRatings(); unsubMeta(); };
     }, [initialMatch.id, groupId]);
 
-    const getMatchMVP = () => {
-        if (technicalRatings.length === 0) return null;
-        const counts: Record<string, number> = {};
-        technicalRatings.forEach(vote => {
-            if (vote.mvpChoice) {
-                counts[vote.mvpChoice] = (counts[vote.mvpChoice] || 0) + 1;
-            }
-        });
-        const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
-        return sorted.length > 0 ? { name: sorted[0][0], votes: sorted[0][1] } : null;
-    };
-
-    const matchMVP = getMatchMVP();
+    // LÓGICA ATUALIZADA: O MVP agora vem direto do documento da partida (calculado pelo MatchLogic)
+    const matchMVPName = match.mvp || null;
 
     const getSafeDateLabel = () => {
         if (!match.date) return "DATA NÃO DEFINIDA";
@@ -133,7 +122,7 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
         if (!confirm(`Remover ${pName}?`)) return;
         try {
             const newConfirmed = (match.confirmedPlayers || []).filter((n: string) => n !== pName);
-            let newTeams = match.teams ? { ...match.teams } : null;
+            const newTeams = match.teams ? { ...match.teams } : null;
             if (newTeams) {
                 ['teamA', 'teamB', 'teamC'].forEach(t => {
                     if (newTeams[t]) newTeams[t] = newTeams[t].filter((p: any) => (p?.name || p) !== pName);
@@ -151,7 +140,7 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
         if (!newName || newName === oldName) return;
         try {
             const newConfirmed = (match.confirmedPlayers || []).map((n: string) => n === oldName ? newName : n);
-            let newTeams = match.teams ? { ...match.teams } : null;
+            const newTeams = match.teams ? { ...match.teams } : null;
             if (newTeams) {
                 ['teamA', 'teamB', 'teamC'].forEach(t => {
                     if (newTeams[t]) newTeams[t] = newTeams[t].map((p: any) => (p?.name || p) === oldName ? (typeof p === 'object' ? { ...p, name: newName } : newName) : p);
@@ -226,27 +215,21 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
             if (matchData?.status === "finished" && Array.isArray(matchData.preMatchStats)) {
                 for (const stat of matchData.preMatchStats) {
                     if (!stat.playerId || !stat.oldStats) continue;
-
                     const playerMetaRef = doc(db, "groups", groupId, "players_meta", stat.playerId);
-
-                    // USAR setDoc EM VEZ DE updateDoc
-                    // Isso evita o erro se o documento do jogador tiver sido apagado
                     await setDoc(playerMetaRef, {
                         technique: Number(stat.oldStats.technique) || 50,
                         speed: Number(stat.oldStats.speed) || 50,
                         finishing: Number(stat.oldStats.finishing) || 50,
                         defense: Number(stat.oldStats.defense) || 50,
-                        // Mantemos o nome caso o documento esteja sendo recriado agora
                         nomeLista: stat.playerId.charAt(0).toUpperCase() + stat.playerId.slice(1)
                     }, { merge: true });
                 }
             }
 
             await deleteDoc(latestMatchRef);
-            toast({ title: "RODADA EXCLUÍDA", description: "O histórico e os níveis foram restaurados." });
+            toast({ title: "RODADA EXCLUÍDA" });
             onBack();
         } catch (e) {
-            console.error("Erro no Rollback:", e);
             toast({ variant: "destructive", title: "ERRO AO EXCLUIR" });
         } finally {
             setIsProcessing(false);
@@ -265,8 +248,6 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
             const v = Number(meta.speed) || 50;
             const d = Number(meta.defense) || 50;
             ovr = Math.round((t * 0.35) + (c * 0.35) + (v * 0.15) + (d * 0.15));
-        } else {
-            ovr = 50;
         }
         if (ovr > 99) ovr = 99;
 
@@ -402,27 +383,27 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
                             </div>
                         )}
 
-                        {match.status === 'finished' && matchMVP && (
+                        {match.status === 'finished' && matchMVPName && (
                             <div className="mt-8 animate-in fade-in zoom-in duration-700">
                                 <Card className="bg-gradient-to-b from-amber-400/20 to-transparent border-amber-400/30 rounded-[3rem] p-8 text-center relative overflow-hidden">
                                     <div className="absolute top-0 left-1/2 -translate-x-1/2 opacity-10"><Trophy className="size-48 text-amber-400" /></div>
                                     <Medal className="size-12 text-amber-400 mx-auto mb-4 drop-shadow-[0_0_10px_rgba(251,191,36,0.5)]" />
                                     <h3 className="text-amber-400 font-black italic uppercase text-2xl tracking-tighter">Man of the Match</h3>
-                                    <p className="text-white/40 text-[10px] font-bold uppercase tracking-[0.3em] mb-6">Melhor em Campo</p>
+                                    <p className="text-white/40 text-[10px] font-bold uppercase tracking-[0.3em] mb-6">Melhor em Campo (Por Médias)</p>
 
                                     <div className="relative inline-block mb-4">
                                         <Avatar className="size-24 border-4 border-amber-400 shadow-[0_0_30px_rgba(251,191,36,0.3)]">
-                                            <AvatarImage src={playersMeta[matchMVP.name.toLowerCase().trim()]?.photoURL} className="object-cover" />
-                                            <AvatarFallback className="bg-zinc-900 text-3xl font-black italic">{matchMVP.name[0]}</AvatarFallback>
+                                            <AvatarImage src={playersMeta[matchMVPName.toLowerCase().trim()]?.photoURL} className="object-cover" />
+                                            <AvatarFallback className="bg-zinc-900 text-3xl font-black italic">{matchMVPName[0]}</AvatarFallback>
                                         </Avatar>
                                         <div className="absolute -bottom-2 -right-2 bg-amber-400 text-black font-black italic px-3 py-1 rounded-lg text-xs shadow-lg">
                                             MVP
                                         </div>
                                     </div>
 
-                                    <h4 className="text-white font-black italic uppercase text-xl tracking-tight mb-1">{matchMVP.name}</h4>
+                                    <h4 className="text-white font-black italic uppercase text-xl tracking-tight mb-1">{matchMVPName}</h4>
                                     <Badge className="bg-amber-400 text-black font-black border-none px-4 py-1 rounded-full text-[10px]">
-                                        {matchMVP.votes} VOTOS RECEBIDOS
+                                        DESTAQUE DA RODADA
                                     </Badge>
                                 </Card>
                             </div>
@@ -489,7 +470,7 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
             )}
 
             <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-                <AlertDialogContent className="bg-zinc-950 border-white/10 rounded-[2.5rem] shadow-3xl">
+                <AlertDialogContent className="bg-zinc-950 border-white/10 rounded-[2.5rem] shadow-3xl outline-none">
                     <AlertDialogHeader>
                         <AlertDialogTitle className="text-white uppercase font-black italic text-xl tracking-tighter">
                             Excluir Rodada?
@@ -501,7 +482,7 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
                             }
                         </AlertDialogDescription>
                     </AlertDialogHeader>
-                    <AlertDialogFooter className="gap-3 mt-4">
+                    <AlertDialogFooter className="gap-3 mt-4 font-sans">
                         <AlertDialogCancel className="bg-white/5 border-none text-white font-black uppercase text-[10px] italic h-12 rounded-xl">
                             Cancelar
                         </AlertDialogCancel>
