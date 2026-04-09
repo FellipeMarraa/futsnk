@@ -241,12 +241,12 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
         const playerName = player?.name || (typeof player === 'string' ? player : "---");
         const meta = playersMeta[playerName.toLowerCase().trim()];
         const photo = meta?.photoURL || "";
-        let ovr = 50;
-        if (meta && typeof meta === 'object') {
-            const t = Number(meta.technique) || 50;
-            const c = Number(meta.finishing) || 50;
-            const v = Number(meta.speed) || 50;
-            const d = Number(meta.defense) || 50;
+        let ovr = 70;
+        if (meta) {
+            const t = Number(meta.technique) || 70;
+            const c = Number(meta.finishing) || 70;
+            const v = Number(meta.speed) || 70;
+            const d = Number(meta.defense) || 70;
             ovr = Math.round((t * 0.35) + (c * 0.35) + (v * 0.15) + (d * 0.15));
         }
         if (ovr > 99) ovr = 99;

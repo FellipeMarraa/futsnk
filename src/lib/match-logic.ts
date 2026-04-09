@@ -104,26 +104,33 @@ export const MatchLogic = {
                         calculatedMvpName = existingMeta?.nomeLista || playerName;
                     }
 
-                    // Suavização 90/10 + TRAVA DE MÍNIMO 60
-                    finalTech = Math.max(60, (currentStats.technique * 0.9) + (roundTech * 0.1));
-                    finalSpeed = Math.max(60, (currentStats.speed * 0.9) + (roundSpeed * 0.1));
-                    finalFin = Math.max(60, (currentStats.finishing * 0.9) + (roundFin * 0.1));
-                    finalDef = Math.max(60, (currentStats.defense * 0.9) + (roundDef * 0.1));
+                    /**
+                     * LÓGICA DE EVOLUÇÃO PONDERADA:
+                     * Usamos um peso de 97% para o histórico e apenas 3% para a rodada atual.
+                     * Isso evita saltos discrepantes e valoriza a constância.
+                     * Trava de segurança: Math.max(70, ...) garante que ninguém fique abaixo do inicial.
+                     */
+                    const weightHistory = 0.95;
+                    const weightRound = 0.05;
+
+                    finalTech = Math.max(70, (currentStats.technique * weightHistory) + (roundTech * weightRound));
+                    finalSpeed = Math.max(70, (currentStats.speed * weightHistory) + (roundSpeed * weightRound));
+                    finalFin = Math.max(70, (currentStats.finishing * weightHistory) + (roundFin * weightRound));
+                    finalDef = Math.max(70, (currentStats.defense * weightHistory) + (roundDef * weightRound));
                 } else {
-                    // Mantém atual, mas garante que se for um doc antigo com nota baixa, suba para 60
-                    finalTech = Math.max(60, currentStats.technique);
-                    finalSpeed = Math.max(60, currentStats.speed);
-                    finalFin = Math.max(60, currentStats.finishing);
-                    finalDef = Math.max(60, currentStats.defense);
+                    // Se não jogou ou não foi votado, apenas garante que não esteja abaixo de 70
+                    finalTech = Math.max(70, currentStats.technique);
+                    finalSpeed = Math.max(70, currentStats.speed);
+                    finalFin = Math.max(70, currentStats.finishing);
+                    finalDef = Math.max(70, currentStats.defense);
                 }
 
                 await setDoc(metaRef, {
-                    // GARANTE QUE O NOME SEJA SALVO (Evita o problema do UID no campo nomeLista)
                     nomeLista: existingMeta?.nomeLista || playerName,
-                    technique: Math.round(finalTech),
-                    speed: Math.round(finalSpeed),
-                    finishing: Math.round(finalFin),
-                    defense: Math.round(finalDef),
+                    technique: finalTech, // Removido o Math.round aqui para manter decimais internamente e a subida ser gradual
+                    speed: finalSpeed,
+                    finishing: finalFin,
+                    defense: finalDef,
                     lastUpdated: serverTimestamp()
                 }, { merge: true });
             }

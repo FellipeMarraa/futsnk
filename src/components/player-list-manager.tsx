@@ -104,10 +104,11 @@ export function PlayerListManager({ groupId }: { groupId: string, isAdmin: boole
     }, [user, playersMetadata, groupId, loading]);
 
     const calculateOVR = (p: PlayerMeta) => {
-        const tec = Number(p.technique) || 50;
-        const chu = Number(p.finishing) || 50;
-        const vel = Number(p.speed) || 50;
-        const def = Number(p.defense) || 50;
+        const tec = Number(p.technique) || 70;
+        const chu = Number(p.finishing) || 70;
+        const vel = Number(p.speed) || 70;
+        const def = Number(p.defense) || 70;
+
         return Math.round((tec * 0.35) + (chu * 0.35) + (vel * 0.15) + (def * 0.15));
     };
 

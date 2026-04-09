@@ -1,5 +1,5 @@
 import {useEffect, useState} from "react"
-import {CheckCircle2, Shield, Star, Target, TrendingUp, Trophy, X, Zap} from "lucide-react"
+import {CheckCircle2, Shield, Star, Target, TrendingUp, Trophy, X, Zap, Users} from "lucide-react"
 import {Button} from "@/components/ui/button"
 import {Card} from "@/components/ui/card"
 import {Dialog, DialogContent, DialogDescription, DialogTitle,} from "@/components/ui/dialog"
@@ -35,18 +35,39 @@ export function MatchRatingModal({ isOpen, onClose, match, currentUser, nomeList
             } catch (e) { console.error(e) }
             finally { setCheckingVote(false) }
         }
-        if (isOpen) checkVoteStatus()
+        if (isOpen) {
+            setStep(1)
+            checkVoteStatus()
+        }
     }, [isOpen, currentUser, match.id, groupId])
 
     const getMyTeammates = () => {
         if (!match.teams || !nomeLista) return []
-        const myName = nomeLista.toLowerCase().trim()
+
+        const myNameProfile = nomeLista.toString().trim().toLowerCase()
         const teamKeys = ['teamA', 'teamB', 'teamC']
+
+        // LÓGICA DE MATCH INTELIGENTE (CONTAINS)
+        // Procura o time onde um dos nomes "contém" ou "é contido por" o seu nomeLista
         const myTeamKey = teamKeys.find(key =>
-            match.teams[key]?.some((p: any) => (p.name || p).toLowerCase().trim() === myName)
+            match.teams[key]?.some((p: any) => {
+                const pNameList = (p?.name || p || "").toString().trim().toLowerCase()
+                return pNameList === myNameProfile ||
+                    myNameProfile.includes(pNameList) ||
+                    pNameList.includes(myNameProfile)
+            })
         )
+
         if (!myTeamKey) return []
-        return match.teams[myTeamKey].filter((p: any) => (p.name || p).toLowerCase().trim() !== myName)
+
+        // Retorna os colegas, usando a mesma lógica de exclusão para não mostrar você mesmo
+        return (match.teams[myTeamKey] || []).filter((p: any) => {
+            const pNameList = (p?.name || p || "").toString().trim().toLowerCase()
+            const isMe = pNameList === myNameProfile ||
+                myNameProfile.includes(pNameList) ||
+                pNameList.includes(myNameProfile)
+            return !isMe && pNameList !== ""
+        })
     }
 
     const teammates = getMyTeammates()
@@ -60,6 +81,7 @@ export function MatchRatingModal({ isOpen, onClose, match, currentUser, nomeList
     }
 
     const isTeammateStepComplete = () => {
+        if (teammates.length === 0) return true
         return teammates.every((p: any) => {
             const name = p.name || p
             const r = ratings[name]
@@ -136,19 +158,43 @@ export function MatchRatingModal({ isOpen, onClose, match, currentUser, nomeList
                         <>
                             {step === 1 ? (
                                 <div className="space-y-2 pb-8">
-                                    {teammates.map((p: any, i: number) => <PlayerRatingCard key={i} p={p} />)}
+                                    {teammates.length > 0 ? (
+                                        teammates.map((p: any, i: number) => <PlayerRatingCard key={i} p={p} />)
+                                    ) : (
+                                        <div className="py-20 text-center px-6 animate-in fade-in duration-500">
+                                            <Users className="size-12 text-white/10 mx-auto mb-4" />
+                                            <p className="text-white/40 text-xs font-bold uppercase tracking-widest leading-relaxed">
+                                                Seu nome não foi identificado nos times sorteados.
+                                            </p>
+                                            <Button
+                                                onClick={() => setStep(2)}
+                                                className="mt-6 bg-primary/10 text-primary border border-primary/20 text-[10px] font-black uppercase italic rounded-xl h-10 px-6"
+                                            >
+                                                Avaliar outros atletas
+                                            </Button>
+                                        </div>
+                                    )}
                                 </div>
                             ) : (
                                 <div className="space-y-6 pb-8">
-                                    {/* SEÇÃO: OUTROS DESTAQUES (OPCIONAL) */}
                                     <div className="space-y-3">
                                         <div className="flex items-center gap-2 mb-2 px-2">
                                             <Trophy className="size-4 text-primary" />
                                             <h4 className="text-white/40 font-black italic uppercase text-[10px] tracking-widest">Outros Jogadores (Opcional - Máx 3)</h4>
                                         </div>
-                                        {match.confirmedPlayers?.filter((n:string) => n.toLowerCase() !== nomeLista.toLowerCase()).map((name: string) => {
+                                        {match.confirmedPlayers?.filter((n:string) => {
+                                            const nameInList = n.toString().trim().toLowerCase();
+                                            const myNameProfile = nomeLista.toString().trim().toLowerCase();
+                                            // Filtra para não aparecer você mesmo na lista de "Outros"
+                                            return nameInList !== myNameProfile &&
+                                                !myNameProfile.includes(nameInList) &&
+                                                !nameInList.includes(myNameProfile);
+                                        }).map((name: string) => {
                                             const isSelected = selectedGeneral.includes(name);
-                                            const isTeammate = teammates.some((t:any) => (t.name || t).toLowerCase() === name.toLowerCase());
+                                            const isTeammate = teammates.some((t:any) => {
+                                                const tName = (t.name || t || "").toString().trim().toLowerCase();
+                                                return tName === name.trim().toLowerCase();
+                                            });
                                             if (isTeammate) return null;
 
                                             return (
@@ -171,7 +217,7 @@ export function MatchRatingModal({ isOpen, onClose, match, currentUser, nomeList
                                     </div>
 
                                     <p className="text-[9px] text-white/20 font-bold uppercase text-center mt-4 tracking-tighter px-10">
-                                        Suas notas alimentam o cálculo de performance que define o MVP da rodada.
+                                        As médias das notas definem o MVP automático da rodada.
                                     </p>
                                 </div>
                             )}
@@ -183,7 +229,13 @@ export function MatchRatingModal({ isOpen, onClose, match, currentUser, nomeList
                     <div className="p-6 bg-zinc-900/50 border-t border-white/5 flex gap-3 shrink-0">
                         {step === 2 && <Button onClick={() => setStep(1)} className="bg-white/5 text-white font-black uppercase text-[10px] h-12 rounded-xl px-6">Voltar</Button>}
                         {step === 1 ? (
-                            <Button disabled={!isTeammateStepComplete()} onClick={() => setStep(2)} className="flex-1 bg-primary text-black font-black uppercase text-xs h-12 rounded-xl">Avaliar Outros jogadores</Button>
+                            <Button
+                                disabled={teammates.length > 0 && !isTeammateStepComplete()}
+                                onClick={() => setStep(2)}
+                                className="flex-1 bg-primary text-black font-black uppercase text-xs h-12 rounded-xl"
+                            >
+                                {teammates.length > 0 ? "Avaliar Adversários" : "Ir para Passo 2"}
+                            </Button>
                         ) : (
                             <Button onClick={submitVotes} className="flex-1 bg-emerald-600 text-white font-black uppercase text-xs h-12 rounded-xl">Finalizar Votação</Button>
                         )}
