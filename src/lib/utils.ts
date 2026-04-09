@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
-import { addHours, isAfter, isBefore, parse } from "date-fns";
+import { addHours, isAfter, isBefore } from "date-fns";
 
 export function getVotingStatus(matchDate: string, matchTime: string) {
   if (!matchDate || !matchTime) {

@@ -39,6 +39,7 @@ import {MatchDetail} from "./match-detail"
 import {PlayerListManager} from "./player-list-manager"
 import {CreateGroupDialog} from "@/components/create-group-dialog"
 import {useToast} from "@/hooks/use-toast"
+import {InviteButton} from "@/components/invite-button.tsx";
 
 interface GroupDetailProps {
     groupId: string
@@ -54,7 +55,7 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
     const { toast } = useToast()
     const [group, setGroup] = useState<any | null>(null)
     const [loading, setLoading] = useState(true)
-    const [error, setError] = useState<string | null>(null)
+    const [, setError] = useState<string | null>(null)
     const [matches, setMatches] = useState<any[]>([])
     const [selectedMatch, setSelectedMatch] = useState<any | null>(null)
     const [isMatchModalOpen, setIsMatchModalOpen] = useState(false)
@@ -168,12 +169,16 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
                         </div>
                     </div>
                     {userIsAdmin && (
-                        <Button
-                            onClick={() => setIsMatchModalOpen(true)}
-                            className="bg-primary hover:bg-primary/90 text-black font-black text-[9px] uppercase italic h-9 px-4 rounded-lg shadow-lg"
-                        >
-                            <Plus className="size-3.5 mr-1 stroke-[3px]" /> Agendar
-                        </Button>
+                        <div className="flex items-center gap-2">
+                            <InviteButton groupId={groupId} groupName={group.name} />
+
+                            <Button
+                                onClick={() => setIsMatchModalOpen(true)}
+                                className="bg-primary hover:bg-primary/90 text-black font-black text-[9px] uppercase italic h-9 px-4 rounded-lg shadow-lg"
+                            >
+                                <Plus className="size-3.5 mr-1 stroke-[3px]" /> Agendar
+                            </Button>
+                        </div>
                     )}
                 </div>
             </header>

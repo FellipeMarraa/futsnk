@@ -15,49 +15,70 @@ export default function JoinGroup() {
             if (!user || !groupId) return;
 
             try {
-                const result = await GroupService.joinGroupById(groupId, user.uid, user.email!);
+                // Removida a variável 'result' que não estava sendo usada
+                await GroupService.joinGroupById(groupId, user.uid, user.email!);
+
                 setStatus('success');
+
                 // Redireciona para o grupo após 2 segundos
-                setTimeout(() => navigate(`/groups/${groupId}`), 2000);
+                const timer = setTimeout(() => navigate(`/groups/${groupId}`), 2000);
+                return () => clearTimeout(timer);
             } catch (error) {
-                console.error(error);
+                console.error("Erro ao processar entrada no grupo:", error);
                 setStatus('error');
             }
         }
 
-        if (user) processJoin();
+        if (user) {
+            processJoin();
+        }
     }, [user, groupId, navigate]);
 
     if (!user) {
         return (
-            <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center">
+            <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center bg-background">
                 <Trophy className="size-12 text-primary mb-4" />
                 <h1 className="text-xl font-black uppercase italic text-white">Convite Recebido!</h1>
                 <p className="text-white/40 text-sm mt-2 mb-6">Você precisa estar logado para entrar no clube.</p>
-                <button onClick={() => navigate('/login')} className="bg-primary px-8 py-3 rounded-xl font-black uppercase italic text-sm">Fazer Login</button>
+                <button
+                    onClick={() => navigate('/login')}
+                    className="bg-primary px-8 py-3 rounded-xl font-black uppercase italic text-sm text-black hover:bg-primary/90 transition-colors"
+                >
+                    Fazer Login
+                </button>
             </div>
         );
     }
 
     return (
-        <div className="min-h-screen flex flex-col items-center justify-center bg-background">
+        <div className="min-h-screen flex flex-col items-center justify-center bg-background p-6">
             {status === 'loading' && (
-                <>
-                    <Loader2 className="size-8 animate-spin text-primary mb-4" />
-                    <p className="text-white font-black uppercase italic">Validando Convite...</p>
-                </>
+                <div className="flex flex-col items-center gap-4">
+                    <Loader2 className="size-8 animate-spin text-primary" />
+                    <p className="text-white font-black uppercase italic text-sm tracking-widest">Validando Convite...</p>
+                </div>
             )}
+
             {status === 'success' && (
                 <div className="animate-in zoom-in duration-500 text-center">
-                    <div className="size-20 bg-primary/20 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <div className="size-20 bg-primary/20 rounded-full flex items-center justify-center mx-auto mb-6 shadow-[0_0_30px_rgba(234,255,0,0.1)]">
                         <Trophy className="size-10 text-primary" />
                     </div>
                     <h1 className="text-2xl font-black uppercase italic text-white">Bem-vindo ao Clube!</h1>
                     <p className="text-white/40 text-[10px] uppercase tracking-widest mt-2">Sincronizando vestiário...</p>
                 </div>
             )}
+
             {status === 'error' && (
-                <p className="text-red-500 font-black uppercase italic">Erro ao entrar no grupo ou link inválido.</p>
+                <div className="text-center">
+                    <p className="text-red-500 font-black uppercase italic mb-4">Erro ao entrar no grupo ou link inválido.</p>
+                    <button
+                        onClick={() => navigate('/')}
+                        className="text-white/40 text-[10px] font-bold uppercase underline"
+                    >
+                        Voltar para o Início
+                    </button>
+                </div>
             )}
         </div>
     );

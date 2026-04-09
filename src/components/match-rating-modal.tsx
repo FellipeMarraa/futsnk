@@ -1,27 +1,12 @@
-import { useState, useEffect } from "react"
-import {
-    Star,
-    Shield,
-    Zap,
-    Target,
-    TrendingUp,
-    ArrowRight,
-    X,
-    CheckCircle2,
-    Trophy
-} from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogTitle,
-} from "@/components/ui/dialog"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { useToast } from "@/hooks/use-toast"
-import { db } from "@/lib/firebase"
-import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore"
+import {useEffect, useState} from "react"
+import {CheckCircle2, Shield, Star, Target, TrendingUp, Trophy, X, Zap} from "lucide-react"
+import {Button} from "@/components/ui/button"
+import {Card} from "@/components/ui/card"
+import {Dialog, DialogContent, DialogDescription, DialogTitle,} from "@/components/ui/dialog"
+import {Avatar, AvatarFallback} from "@/components/ui/avatar"
+import {useToast} from "@/hooks/use-toast"
+import {db} from "@/lib/firebase"
+import {doc, getDoc, serverTimestamp, setDoc} from "firebase/firestore"
 
 interface RatingModalProps {
     isOpen: boolean

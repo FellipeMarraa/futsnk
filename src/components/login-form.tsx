@@ -1,10 +1,10 @@
-import { useState } from "react"
-import {Loader2, Trophy, ShieldCheck, LoaderPinwheel} from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth'
-import { auth, db } from '@/lib/firebase'
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'
-import { useToast } from "@/hooks/use-toast"
+import {useState} from "react"
+import {Loader2, LoaderPinwheel, Trophy} from "lucide-react"
+import {Button} from "@/components/ui/button"
+import {GoogleAuthProvider, signInWithPopup} from 'firebase/auth'
+import {auth, db} from '@/lib/firebase'
+import {doc, getDoc, serverTimestamp, setDoc} from 'firebase/firestore'
+import {useToast} from "@/hooks/use-toast"
 
 export function LoginForm() {
     const [isGoogleLoading, setIsGoogleLoading] = useState(false)
@@ -38,7 +38,8 @@ export function LoginForm() {
             }
             toast({ title: "AUTORIZADO", description: "Bem-vindo ao clube!" })
         } catch (error) {
-            toast({ variant: "destructive", title: "ERRO", description: "Falha na conexão." })
+            toast({ variant: "destructive", title: "ERRO", description: "Falha na conexão." });
+            console.log(error);
         } finally {
             setIsGoogleLoading(false)
         }
