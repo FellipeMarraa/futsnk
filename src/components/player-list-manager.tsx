@@ -28,20 +28,33 @@ export function PlayerListManager({ groupId }: { groupId: string, isAdmin: boole
 
     useEffect(() => {
         const q = query(collection(db, "groups", groupId, "players_meta"));
+
         const unsubscribe = onSnapshot(q, (snap) => {
             const data = snap.docs.map(d => {
                 const docData = d.data();
+
+                // 1. Pegamos o nome de dentro do documento
+                let nomeReal = docData.nomeLista || docData.displayName;
+
+                // 2. SE NÃO EXISTIR NOME DENTRO:
+                if (!nomeReal) {
+                    // Se o ID do documento for curto (ex: "marra"), usamos ele.
+                    // Se for longo (UID do Google), usamos "Atleta".
+                    nomeReal = d.id.length > 20 ? "Atleta" : d.id;
+                }
+
                 return {
                     id: d.id,
-                    nomeLista: docData.nomeLista || "Atleta",
+                    nomeLista: nomeReal, // Agora passamos o nome tratado
                     technique: Number(docData.technique) || 50,
                     speed: Number(docData.speed) || 50,
                     defense: Number(docData.defense) || 50,
                     finishing: Number(docData.finishing) || 50,
-                    userId: docData.userId,
+                    userId: docData.userId || (docData.uid ? d.id : undefined),
                     photoURL: docData.photoURL
                 };
             }) as PlayerMeta[];
+
             setPlayersMetadata(data);
             setLoading(false);
         });
@@ -68,21 +81,19 @@ export function PlayerListManager({ groupId }: { groupId: string, isAdmin: boole
                 );
             });
 
-            // 2. Se encontrar o "fantasma", faz o merge
             if (ghostProfile) {
                 try {
                     const officialRef = doc(db, "groups", groupId, "players_meta", officialId);
 
                     await setDoc(officialRef, {
-                        ...ghostProfile, // Copia as notas e estatísticas do fantasma
-                        nomeLista: user.nomeLista, // Mantém o apelido escolhido
+                        ...ghostProfile,
+                        nomeLista: user.nomeLista,
                         userId: user.uid,
                         photoURL: user.photoURL,
                         updatedAt: new Date()
                     }, { merge: true });
 
                     await deleteDoc(doc(db, "groups", groupId, "players_meta", ghostProfile.id));
-
                     toast({ title: "PERFIL VINCULADO", description: `Suas notas de ${ghostProfile.nomeLista} foram recuperadas!` });
                 } catch (e) {
                     console.error("Erro no Sync:", e);
