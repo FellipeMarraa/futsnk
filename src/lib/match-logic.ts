@@ -26,7 +26,6 @@ export const MatchLogic = {
 
             const statsAccumulator: Record<string, any> = {};
 
-            // VARIÁVEIS PARA CÁLCULO AUTOMÁTICO DE MVP
             let bestRoundPerformance = -1;
             let calculatedMvpName = "";
 
@@ -69,15 +68,16 @@ export const MatchLogic = {
                 const metaRef = doc(db, "groups", groupId, "players_meta", targetDocId);
                 const metaDoc = await getDoc(metaRef);
 
-                let currentStats = { technique: 50, speed: 50, finishing: 50, defense: 50 };
+                // PADRÃO DE INÍCIO: 70
+                let currentStats = { technique: 70, speed: 70, finishing: 70, defense: 70 };
 
                 if (metaDoc.exists()) {
                     const d = metaDoc.data();
                     currentStats = {
-                        technique: Number(d.technique) || 50,
-                        speed: Number(d.speed) || 50,
-                        finishing: Number(d.finishing) || 50,
-                        defense: Number(d.defense) || 50
+                        technique: Number(d.technique) || 70,
+                        speed: Number(d.speed) || 70,
+                        finishing: Number(d.finishing) || 70,
+                        defense: Number(d.defense) || 70
                     };
                 }
 
@@ -92,14 +92,11 @@ export const MatchLogic = {
                 if (acc && acc.technique.length > 0) {
                     const count = acc.technique.length;
 
-                    // Médias da RODADA ATUAL (escala 0-100)
                     const roundTech = (acc.technique.reduce((a: any, b: any) => a + b, 0) / count) * 20;
                     const roundSpeed = (acc.speed.reduce((a: any, b: any) => a + b, 0) / count) * 20;
                     const roundFin = (acc.finishing.reduce((a: any, b: any) => a + b, 0) / count) * 20;
                     const roundDef = (acc.defense.reduce((a: any, b: any) => a + b, 0) / count) * 20;
 
-                    // --- LÓGICA MVP AUTOMÁTICO ---
-                    // Performance ponderada da rodada (Técnica e Chute pesam mais)
                     const currentPerformance = (roundTech * 0.4) + (roundFin * 0.3) + (roundSpeed * 0.15) + (roundDef * 0.15);
 
                     if (currentPerformance > bestRoundPerformance) {
@@ -107,19 +104,21 @@ export const MatchLogic = {
                         calculatedMvpName = existingMeta?.nomeLista || playerName;
                     }
 
-                    // Suavização 90/10 para o histórico
-                    finalTech = (currentStats.technique * 0.9) + (roundTech * 0.1);
-                    finalSpeed = (currentStats.speed * 0.9) + (roundSpeed * 0.1);
-                    finalFin = (currentStats.finishing * 0.9) + (roundFin * 0.1);
-                    finalDef = (currentStats.defense * 0.9) + (roundDef * 0.1);
+                    // Suavização 90/10 + TRAVA DE MÍNIMO 60
+                    finalTech = Math.max(60, (currentStats.technique * 0.9) + (roundTech * 0.1));
+                    finalSpeed = Math.max(60, (currentStats.speed * 0.9) + (roundSpeed * 0.1));
+                    finalFin = Math.max(60, (currentStats.finishing * 0.9) + (roundFin * 0.1));
+                    finalDef = Math.max(60, (currentStats.defense * 0.9) + (roundDef * 0.1));
                 } else {
-                    finalTech = currentStats.technique;
-                    finalSpeed = currentStats.speed;
-                    finalFin = currentStats.finishing;
-                    finalDef = currentStats.defense;
+                    // Mantém atual, mas garante que se for um doc antigo com nota baixa, suba para 60
+                    finalTech = Math.max(60, currentStats.technique);
+                    finalSpeed = Math.max(60, currentStats.speed);
+                    finalFin = Math.max(60, currentStats.finishing);
+                    finalDef = Math.max(60, currentStats.defense);
                 }
 
                 await setDoc(metaRef, {
+                    // GARANTE QUE O NOME SEJA SALVO (Evita o problema do UID no campo nomeLista)
                     nomeLista: existingMeta?.nomeLista || playerName,
                     technique: Math.round(finalTech),
                     speed: Math.round(finalSpeed),
@@ -129,10 +128,9 @@ export const MatchLogic = {
                 }, { merge: true });
             }
 
-            // 3. Finalizar rodada salvando o MVP calculado
             await updateDoc(matchRef, {
                 status: "finished",
-                mvp: calculatedMvpName || "Ninguém", // Salva o nome do MVP automático
+                mvp: calculatedMvpName || "Ninguém",
                 preMatchStats: preMatchStats,
                 updatedAt: serverTimestamp()
             });
