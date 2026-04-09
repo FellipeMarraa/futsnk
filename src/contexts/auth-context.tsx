@@ -1,21 +1,16 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import {
   onAuthStateChanged,
-  type User,
   GoogleAuthProvider,
   signInWithPopup,
   signOut
 } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
-import { doc, getDoc, collection, query, where, getDocs, setDoc } from 'firebase/firestore';
-
-interface Group {
-  id: string;
-  name: string;
-}
+import { doc, onSnapshot, collection, query, where, getDocs, setDoc } from 'firebase/firestore';
+import type {AppUser, Group} from "@/lib/auth.ts";
 
 interface AuthContextType {
-  user: User | null;
+  user: AppUser | null;
   isAdmin: boolean;
   nomeLista: string | null;
   loading: boolean;
@@ -30,64 +25,54 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<AppUser | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [nomeLista, setNomeLista] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [userGroups, setUserGroups] = useState<Group[]>([]);
   const [activeGroup, setActiveGroup] = useState<Group | null>(null);
 
-  // Função para sincronizar/buscar dados do Firestore
-  const fetchUserData = async (firebaseUser: User) => {
-    try {
-      const userDocRef = doc(db, 'users', firebaseUser.uid);
-      const userDoc = await getDoc(userDocRef);
-
-      let userData = userDoc.data();
-
-      // Se o usuário logou com Google e não tem documento no Firestore ainda, criamos um básico
-      if (!userDoc.exists()) {
-        userData = {
-          email: firebaseUser.email,
-          displayName: firebaseUser.displayName,
-          photoURL: firebaseUser.photoURL,
-          isAdmin: false,
-          nomeLista: null, // Admin preencherá isso depois
-          createdAt: new Date()
-        };
-        await setDoc(userDocRef, userData);
-      }
-
-      setIsAdmin(userData?.isAdmin || false);
-      setNomeLista(userData?.nomeLista || null);
-
-      // Busca grupos (por ID de usuário ou Email)
-      const groupsQuery = query(
-          collection(db, 'groups'),
-          where('membersEmails', 'array-contains', firebaseUser.email?.toLowerCase())
-      );
-
-      const groupsSnap = await getDocs(groupsQuery);
-      const groups = groupsSnap.docs.map(d => ({
-        id: d.id,
-        name: d.data().name
-      }));
-
-      setUserGroups(groups);
-      if (groups.length > 0 && !activeGroup) {
-        setActiveGroup(groups[0]);
-      }
-    } catch (error) {
-      console.error("Erro ao carregar dados do usuário:", error);
-    }
+  const fetchGroups = async (email: string) => {
+    const groupsQuery = query(
+        collection(db, 'groups'),
+        where('membersEmails', 'array-contains', email.toLowerCase())
+    );
+    const groupsSnap = await getDocs(groupsQuery);
+    const groups = groupsSnap.docs.map(d => ({
+      id: d.id,
+      name: d.data().name
+    }));
+    setUserGroups(groups);
+    if (groups.length > 0 && !activeGroup) setActiveGroup(groups[0]);
   };
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+    let unsubscribeFirestore: () => void;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
       setLoading(true);
+
       if (firebaseUser) {
-        setUser(firebaseUser);
-        await fetchUserData(firebaseUser);
+        unsubscribeFirestore = onSnapshot(doc(db, 'users', firebaseUser.uid), (docSnap) => {
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            setUser({ ...firebaseUser, ...data } as AppUser);
+            setIsAdmin(data.isAdmin || false);
+            setNomeLista(data.nomeLista || null);
+          } else {
+            setDoc(doc(db, 'users', firebaseUser.uid), {
+              uid: firebaseUser.uid,
+              email: firebaseUser.email,
+              displayName: firebaseUser.displayName,
+              photoURL: firebaseUser.photoURL,
+              isAdmin: false,
+              nomeLista: null,
+              createdAt: new Date()
+            });
+          }
+        });
+
+        if (firebaseUser.email) await fetchGroups(firebaseUser.email);
       } else {
         setUser(null);
         setIsAdmin(false);
@@ -97,7 +82,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       setLoading(false);
     });
-    return unsubscribe;
+
+    return () => {
+      unsubscribeAuth();
+      if (unsubscribeFirestore) unsubscribeFirestore();
+    };
   }, []);
 
   const loginWithGoogle = async () => {
@@ -110,7 +99,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const refreshGroups = async () => {
-    if (user) await fetchUserData(user);
+    if (user?.email) await fetchGroups(user.email);
   };
 
   return (

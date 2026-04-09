@@ -52,31 +52,27 @@ export function PlayerListManager({ groupId }: { groupId: string, isAdmin: boole
             if (!user || !meuNomeNoPerfil || loading) return;
 
             const officialId = user.uid;
-            const myOfficialProfile = playersMetadata.find(p => p.id === officialId || p.userId === user.uid);
-
-            if (!myOfficialProfile) {
-                try {
-                    await setDoc(doc(db, "groups", groupId, "players_meta", officialId), {
-                        nomeLista: meuNomeNoPerfil,
-                        technique: 50,
-                        speed: 50,
-                        defense: 50,
-                        finishing: 50,
-                        userId: user.uid,
-                        photoURL: user.photoURL,
-                        updatedAt: new Date()
-                    }, { merge: true });
-                } catch (e) { console.error(e); }
-            }
 
             const ghostProfile = playersMetadata.find(p =>
-                p.nomeLista &&
-                p.nomeLista.toLowerCase().trim() === meuNomeNoPerfil.toLowerCase().trim() &&
+                p.nomeLista?.toLowerCase().trim() === meuNomeNoPerfil.toLowerCase().trim() &&
                 p.id !== officialId
             );
 
             if (ghostProfile) {
                 try {
+                    const officialRef = doc(db, "groups", groupId, "players_meta", officialId);
+
+                    await setDoc(officialRef, {
+                        nomeLista: meuNomeNoPerfil,
+                        technique: ghostProfile.technique,
+                        speed: ghostProfile.speed,
+                        defense: ghostProfile.defense,
+                        finishing: ghostProfile.finishing,
+                        userId: user.uid,
+                        photoURL: user.photoURL,
+                        updatedAt: new Date()
+                    }, { merge: true });
+
                     await deleteDoc(doc(db, "groups", groupId, "players_meta", ghostProfile.id));
                 } catch (e) { console.error(e); }
             }

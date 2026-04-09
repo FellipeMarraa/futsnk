@@ -1,13 +1,17 @@
-import {useState} from "react"
-import {Loader2, LoaderPinwheel, Trophy} from "lucide-react"
-import {Button} from "@/components/ui/button"
-import {GoogleAuthProvider, signInWithPopup} from 'firebase/auth'
-import {auth, db} from '@/lib/firebase'
-import {doc, getDoc, serverTimestamp, setDoc} from 'firebase/firestore'
-import {useToast} from "@/hooks/use-toast"
+import { useState } from "react"
+import { Loader2, LoaderPinwheel, Trophy } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth'
+import { auth, db } from '@/lib/firebase'
+import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
+import { useToast } from "@/hooks/use-toast"
 
 export function LoginForm() {
     const [isGoogleLoading, setIsGoogleLoading] = useState(false)
+    const [isFinalizing, setIsFinalizing] = useState(false)
+    // Estado para armazenar os dados temporários do Google no primeiro login
+    const [needsProfile, setNeedsProfile] = useState<{ uid: string, email: string, photoURL: string, displayName: string } | null>(null)
+    const [nomeEscolhido, setNomeEscolhido] = useState("")
     const { toast } = useToast()
 
     const handleGoogleLogin = async () => {
@@ -25,27 +29,103 @@ export function LoginForm() {
                     uid: user.uid,
                     email: user.email,
                     displayName: user.displayName,
-                    nomeLista: user.displayName || "",
+                    nomeLista: "",
                     photoURL: user.photoURL,
                     isAdmin: false,
                     createdAt: serverTimestamp(),
                     lastLogin: serverTimestamp()
                 })
             } else {
+                // JÁ EXISTE: Apenas atualiza o último login e a foto
                 await setDoc(userRef, {
                     lastLogin: serverTimestamp(),
                     photoURL: user.photoURL
                 }, { merge: true })
+                toast({ title: "AUTORIZADO", description: "Bem-vindo de volta ao clube!" })
             }
-            toast({ title: "AUTORIZADO", description: "Bem-vindo ao clube!" })
         } catch (error) {
-            toast({ variant: "destructive", title: "ERRO", description: "Falha na conexão." });
+            toast({ variant: "destructive", title: "ERRO", description: "Falha na conexão com o Google." });
             console.log(error);
         } finally {
             setIsGoogleLoading(false)
         }
     }
 
+    const finalizeProfile = async () => {
+        if (!needsProfile || !nomeEscolhido.trim()) {
+            toast({ variant: "destructive", title: "NOME INVÁLIDO", description: "Escreve aí como a galera te chama!" });
+            return;
+        }
+
+        setIsFinalizing(true)
+        try {
+            const userRef = doc(db, 'users', needsProfile.uid)
+            await setDoc(userRef, {
+                uid: needsProfile.uid,
+                email: needsProfile.email,
+                displayName: needsProfile.displayName,
+                nomeLista: nomeEscolhido.trim(), // O nome que o usuário escolheu
+                photoURL: needsProfile.photoURL,
+                isAdmin: false,
+                createdAt: serverTimestamp(),
+                lastLogin: serverTimestamp()
+            })
+
+            toast({ title: "PERFIL CRIADO", description: "Sua conta foi vinculada com sucesso!" })
+            setNeedsProfile(null) // Fecha o modal e entra no dashboard
+        } catch (error) {
+            console.error(error)
+            toast({ variant: "destructive", title: "ERRO", description: "Não conseguimos salvar seu nome." });
+        } finally {
+            setIsFinalizing(false)
+        }
+    }
+
+    // --- RENDERIZAÇÃO DA TELA DE "COMO TE CHAMAM NO RACHA?" ---
+    if (needsProfile) {
+        return (
+            <div className="relative flex min-h-screen w-full items-center justify-center bg-background p-6 overflow-hidden">
+                <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                    <div className="absolute top-[-10%] left-[-10%] size-[500px] bg-primary/10 blur-[120px] rounded-full" />
+                </div>
+
+                <div className="relative z-10 w-full max-w-[420px] animate-in zoom-in duration-500">
+                    <div className="fc-glass p-8 rounded-[2.5rem] fc-card-glow text-center border border-primary/20">
+                        <div className="mb-6 inline-flex h-16 w-16 bg-card border border-white/10 rounded-2xl items-center justify-center shadow-2xl">
+                            <Trophy className="size-8 text-primary" />
+                        </div>
+
+                        <h2 className="text-2xl font-black italic text-white uppercase leading-tight mb-2">
+                            Como te chamam no racha?
+                        </h2>
+                        <p className="text-zinc-500 text-[10px] font-bold uppercase tracking-widest mb-8">
+                            Este nome será usado para vincular seu nível e estatísticas.
+                        </p>
+
+                        <div className="space-y-6">
+                            <input
+                                className="w-full bg-white/5 border border-white/10 rounded-2xl h-16 px-6 text-white font-bold text-center focus:ring-2 focus:ring-primary/50 outline-none transition-all placeholder:text-white/10"
+                                value={nomeEscolhido}
+                                onChange={(e) => setNomeEscolhido(e.target.value)}
+                                placeholder="Seu apelido ou nome na lista..."
+                                autoFocus
+                            />
+
+                            <Button
+                                onClick={finalizeProfile}
+                                disabled={isFinalizing}
+                                className="w-full h-16 bg-primary hover:bg-primary/90 text-black font-black italic uppercase rounded-2xl shadow-[0_0_30px_rgba(234,255,0,0.2)]"
+                            >
+                                {isFinalizing ? <Loader2 className="size-6 animate-spin" /> : "Entrar na Arena"}
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        )
+    }
+
+    // --- RENDERIZAÇÃO ORIGINAL DO LOGIN ---
     return (
         <div className="relative flex min-h-screen w-full items-center justify-center bg-background p-6 overflow-hidden">
             {/* Formas abstratas de luz ao fundo para dar leveza */}
@@ -64,7 +144,7 @@ export function LoginForm() {
                         </div>
                     </div>
 
-                    <h1 className="text-5xl font-black italic tracking-tighter text-white uppercase italic leading-none">
+                    <h1 className="text-5xl font-black italic tracking-tighter text-white uppercase leading-none">
                         FUT<span className="text-primary">MATCH</span>
                     </h1>
                 </div>
@@ -107,7 +187,6 @@ export function LoginForm() {
                         <span className="text-[9px] font-bold uppercase tracking-[0.2em]">BORA PRO RACHA</span>
                     </div>
                 </div>
-
             </div>
         </div>
     )
