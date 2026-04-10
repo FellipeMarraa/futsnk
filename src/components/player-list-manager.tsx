@@ -63,20 +63,24 @@ export function PlayerListManager({ groupId }: { groupId: string, isAdmin: boole
 
     useEffect(() => {
         const syncOfficialProfile = async () => {
+            // Bloqueia se não houver usuário ou se os dados ainda estiverem carregando
             if (!user || !user.nomeLista || loading || playersMetadata.length === 0) return;
 
             const officialId = user.uid;
+            // 1. Usamos a constante meuNome para todas as comparações abaixo
             const meuNome = user.nomeLista.toLowerCase().trim();
 
             const hasOfficial = playersMetadata.some(p => p.id === officialId);
 
             const ghostProfile = playersMetadata.find(p => {
+                // Não queremos que o perfil oficial seja considerado um "fantasma" dele mesmo
                 if (p.id === officialId) return false;
 
-                const nomeDoc = (p.nomeLista || "").toLowerCase().trim();
-                const idDoc = p.id.toLowerCase().trim();
+                const nomeDocInterno = (p.nomeLista || "").toLowerCase().trim();
+                const idDoDocumento = p.id.toLowerCase().trim();
 
-                return idDoc === meuNome || nomeDoc === meuNome || nomeDoc.includes(meuNome);
+                // 2. Comparamos usando a constante 'meuNome' que o TS já validou
+                return idDoDocumento === meuNome || nomeDocInterno === meuNome || nomeDocInterno.includes(meuNome);
             });
 
             if (ghostProfile) {
@@ -87,7 +91,7 @@ export function PlayerListManager({ groupId }: { groupId: string, isAdmin: boole
                     if (!hasOfficial) {
                         await setDoc(officialRef, {
                             ...ghostProfile,
-                            nomeLista: user.nomeLista,
+                            nomeLista: user.nomeLista, // Usando o valor original para o banco
                             userId: user.uid,
                             photoURL: user.photoURL,
                             lastUpdated: serverTimestamp()
@@ -95,12 +99,17 @@ export function PlayerListManager({ groupId }: { groupId: string, isAdmin: boole
                     }
 
                     await deleteDoc(ghostRef);
-                    toast({ title: "PERFIL SINCRONIZADO", description: "Sua conta oficial foi vinculada ao seu histórico." });
+
+                    toast({
+                        title: "PERFIL SINCRONIZADO",
+                        description: "Sua conta oficial foi vinculada ao seu histórico."
+                    });
                 } catch (e) {
                     console.error("Erro no Sync:", e);
                 }
             }
         };
+
         syncOfficialProfile();
     }, [user, playersMetadata, groupId, loading]);
 

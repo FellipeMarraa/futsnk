@@ -56,19 +56,18 @@ export const MatchLogic = {
             for (const playerName of players) {
                 const nameLower = playerName.toLowerCase().trim();
 
-                const foundMeta = existingMetas.find(m => {
+                const potentialMetas = existingMetas.filter(m => {
                     const metaNomeLista = (m.nomeLista || "").toLowerCase().trim();
                     const metaId = m.id.toLowerCase().trim();
-
-                    return metaNomeLista === nameLower ||
-                        metaId === nameLower ||
-                        metaNomeLista.includes(nameLower) ||
-                        nameLower.includes(metaNomeLista);
+                    return metaNomeLista === nameLower || metaId === nameLower || metaNomeLista.includes(nameLower);
                 });
 
+                const officialMeta = potentialMetas.find(m => m.id === (m as any).userId);
+
+                const foundMeta = officialMeta || potentialMetas[0];
                 const targetDocId = foundMeta ? foundMeta.id : nameLower;
 
-                console.log("targetDocId:", targetDocId, "foundMeta:", foundMeta);
+                console.log(`Jogador: ${playerName} -> TargetID: ${targetDocId}`);
                 const metaRef = doc(db, "groups", groupId, "players_meta", targetDocId);
                 const metaDoc = await getDoc(metaRef);
 
