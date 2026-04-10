@@ -12,7 +12,16 @@ export const DrawService = {
         });
 
         const players = confirmedNames.map(name => {
-            const data = metaData[name.toLowerCase()] || { technique: 50, speed: 50 };
+            const searchName = name.toLowerCase().trim();
+
+            const dataKey = Object.keys(metaData).find(key => {
+                const p = metaData[key];
+                const nomeNoMeta = (p.nomeLista || "").toLowerCase().trim();
+                return key === searchName || nomeNoMeta === searchName;
+            });
+
+            const data = dataKey ? metaData[dataKey] : { technique: 70, speed: 70, finishing: 70, defense: 70 };
+
             return {
                 name,
                 power: (Number(data.technique) * 1.5) + Number(data.speed)

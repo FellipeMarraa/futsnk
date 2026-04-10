@@ -61,7 +61,8 @@ export const MatchLogic = {
                 const foundMeta = existingMetas.find(m => {
                     const metaNomeLista = (m.nomeLista || "").toLowerCase().trim();
                     const metaId = m.id.toLowerCase().trim();
-                    return metaNomeLista === nameLower || metaId === nameLower || metaNomeLista.includes(nameLower) || nameLower.includes(metaNomeLista);
+
+                    return metaNomeLista === nameLower || metaId === nameLower;
                 });
 
                 const targetDocId = foundMeta ? foundMeta.id : nameLower;

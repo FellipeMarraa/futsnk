@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import { ChevronRight, Loader2, Medal, Search, Shield, Target, TrendingUp, Zap } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { db } from "@/lib/firebase"
-import { collection, deleteDoc, doc, onSnapshot, query, setDoc } from "firebase/firestore"
+import {collection, deleteDoc, doc, onSnapshot, query, serverTimestamp, setDoc} from "firebase/firestore"
 import { useAuth } from "@/contexts/auth-context"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Dialog, DialogContent, DialogTrigger, DialogTitle, DialogDescription } from "@/components/ui/dialog"
@@ -63,38 +63,42 @@ export function PlayerListManager({ groupId }: { groupId: string, isAdmin: boole
 
     useEffect(() => {
         const syncOfficialProfile = async () => {
-            if (!user || !user.nomeLista || loading) return;
+            // Bloqueia se não houver usuário ou se os dados ainda estiverem carregando
+            if (!user || !user.nomeLista || loading || playersMetadata.length === 0) return;
 
             const officialId = user.uid;
             const nomeParaMatch = user.nomeLista.toLowerCase().trim();
-            const nomeGoogle = user.displayName?.toLowerCase().trim() || "";
 
+            // 1. Verifica se já existe o perfil oficial
+            const hasOfficial = playersMetadata.some(p => p.id === officialId);
+
+            // 2. Procura o "Ghost" (ex: marra)
             const ghostProfile = playersMetadata.find(p => {
-                if (p.id === officialId) return false; // Ignora o próprio perfil oficial
-
-                const nomeNaLista = p.nomeLista?.toLowerCase().trim() || "";
-
-                return (
-                    nomeNaLista === nomeParaMatch ||           // Match exato com o apelido
-                    nomeGoogle.includes(nomeNaLista) ||        // O nome do Google contém o nome da lista
-                    nomeParaMatch.includes(nomeNaLista)        // O apelido contém o nome da lista
-                );
+                if (p.id === officialId) return false;
+                const nomeNaLista = (p.nomeLista || "").toLowerCase().trim();
+                return nomeNaLista === nomeParaMatch || p.id.toLowerCase() === nomeParaMatch;
             });
 
             if (ghostProfile) {
                 try {
                     const officialRef = doc(db, "groups", groupId, "players_meta", officialId);
+                    const ghostRef = doc(db, "groups", groupId, "players_meta", ghostProfile.id);
 
-                    await setDoc(officialRef, {
-                        ...ghostProfile,
-                        nomeLista: user.nomeLista,
-                        userId: user.uid,
-                        photoURL: user.photoURL,
-                        updatedAt: new Date()
-                    }, { merge: true });
+                    // Se eu NÃO tenho perfil oficial, eu migro os dados do ghost
+                    if (!hasOfficial) {
+                        await setDoc(officialRef, {
+                            ...ghostProfile,
+                            nomeLista: user.nomeLista,
+                            userId: user.uid,
+                            photoURL: user.photoURL,
+                            lastUpdated: serverTimestamp()
+                        });
+                    }
 
-                    await deleteDoc(doc(db, "groups", groupId, "players_meta", ghostProfile.id));
-                    toast({ title: "PERFIL VINCULADO", description: `Suas notas de ${ghostProfile.nomeLista} foram recuperadas!` });
+                    // DELETA O GHOST (marra) definitivamente
+                    await deleteDoc(ghostRef);
+
+                    toast({ title: "PERFIL SINCRONIZADO", description: "Sua conta oficial foi vinculada ao seu histórico." });
                 } catch (e) {
                     console.error("Erro no Sync:", e);
                 }
