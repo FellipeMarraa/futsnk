@@ -1,17 +1,40 @@
-import { useEffect, useState } from "react"
-import { Users, Calendar, Clock, ChevronRight, LogOut, Loader2, Plus, Pencil, Trash2, Trophy, AlertCircle } from "lucide-react"
-import { Card, CardContent } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
-import { useAuth } from "@/contexts/auth-context"
-import { auth, db } from "@/lib/firebase"
-import { doc, updateDoc } from "firebase/firestore"
-import { CreateGroupDialog } from "@/components/create-group-dialog"
-import { getUserGroups, isUserAdmin, deleteGroup } from "@/lib/firebase-services.ts";
-import { useToast } from "@/hooks/use-toast"
+import {useEffect, useState} from "react"
+import {
+    AlertCircle,
+    Calendar,
+    ChevronRight,
+    Clock,
+    Loader2,
+    LogOut,
+    Pencil,
+    Plus,
+    Star,
+    Trash2,
+    Trophy,
+    Users
+} from "lucide-react"
+import {Card, CardContent} from "@/components/ui/card"
+import {Badge} from "@/components/ui/badge"
+import {Button} from "@/components/ui/button"
+import {DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger} from "@/components/ui/dropdown-menu"
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle
+} from "@/components/ui/alert-dialog"
+import {useAuth} from "@/contexts/auth-context"
+import {auth, db} from "@/lib/firebase"
+import {doc, updateDoc} from "firebase/firestore"
+import {CreateGroupDialog} from "@/components/create-group-dialog"
+import {deleteGroup, getUserGroups, isUserAdmin} from "@/lib/firebase-services.ts";
+import {useToast} from "@/hooks/use-toast"
+import {PlayerProfileDialog} from "@/components/player-profile-dialog.tsx";
+import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar.tsx";
 
 const DAYS_MAP: Record<string, string> = { "0": "Dom", "1": "Seg", "2": "Ter", "3": "Qua", "4": "Qui", "5": "Sex", "6": "Sáb" };
 
@@ -24,6 +47,7 @@ export function Dashboard({ onSelectGroup }: { onSelectGroup: (groupId: string) 
     const [groupToEdit, setGroupToEdit] = useState<any>(null)
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
     const [groupIdToDelete, setGroupIdToDelete] = useState<string | null>(null)
+    const [isProfileOpen, setIsProfileOpen] = useState(false)
 
     const [tempNome, setTempNome] = useState("");
     const [isSavingName, setIsSavingName] = useState(false)
@@ -152,14 +176,30 @@ export function Dashboard({ onSelectGroup }: { onSelectGroup: (groupId: string) 
                             </Button>
                         )}
                         <DropdownMenu>
-                            <DropdownMenuTrigger className="outline-none">
-                                <Avatar className="size-8 border border-primary/20 hover:opacity-80 transition-opacity">
-                                    <AvatarImage src={user?.photoURL || ""} />
-                                    <AvatarFallback className="text-[10px] bg-zinc-800">FC</AvatarFallback>
-                                </Avatar>
+                            <DropdownMenuTrigger asChild>
+                                <button className="outline-none"> {/* Usei button asChild para evitar conflitos de ref */}
+                                    <Avatar className="size-8 border border-primary/20 hover:opacity-80 transition-opacity">
+                                        <AvatarImage src={user?.photoURL || ""} />
+                                        <AvatarFallback className="text-[10px] bg-zinc-800">
+                                            {user?.nomeLista?.[0] || "FC"}
+                                        </AvatarFallback>
+                                    </Avatar>
+                                </button>
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="bg-card border-white/10 text-white p-1 w-44 rounded-xl shadow-2xl">
-                                <DropdownMenuItem onClick={() => auth.signOut()} className="text-red-400 font-bold text-[10px] uppercase italic py-2 cursor-pointer">
+
+                            {/* O Radix exige que o Content esteja dentro de um Portal ou diretamente no Root */}
+                            <DropdownMenuContent align="end" className="bg-[#1a1a1e] border-white/10 text-white p-1 w-44 rounded-xl shadow-2xl z-[100]">
+                                <DropdownMenuItem
+                                    onClick={() => setIsProfileOpen(true)}
+                                    className="font-bold text-[10px] uppercase italic py-2 cursor-pointer hover:bg-white/5 transition-colors focus:bg-white/5 focus:text-white"
+                                >
+                                    <Star className="size-3.5 mr-2 text-primary fill-primary" /> Meu Perfil
+                                </DropdownMenuItem>
+
+                                <DropdownMenuItem
+                                    onClick={() => auth.signOut()}
+                                    className="text-red-400 font-bold text-[10px] uppercase italic py-2 cursor-pointer hover:bg-red-500/10 focus:bg-red-500/10 focus:text-red-400"
+                                >
                                     <LogOut className="size-3.5 mr-2" /> Sair
                                 </DropdownMenuItem>
                             </DropdownMenuContent>
@@ -270,7 +310,13 @@ export function Dashboard({ onSelectGroup }: { onSelectGroup: (groupId: string) 
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
-
+            <PlayerProfileDialog
+                isOpen={isProfileOpen}
+                onClose={() => setIsProfileOpen(false)}
+                user={user}
+                // Se quiser o perfil global, não passe groupId.
+                // Se quiser as notas de um grupo específico, teria que passar o ID ativo.
+            />
             <CreateGroupDialog isOpen={isCreateModalOpen} groupToEdit={groupToEdit} onClose={() => { setIsCreateModalOpen(false); setGroupToEdit(null); }} onSuccess={fetchGroups} />
         </div>
     )
