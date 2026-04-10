@@ -90,9 +90,16 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
         const qMeta = query(collection(db, "groups", groupId, "players_meta"));
         const unsubMeta = onSnapshot(qMeta, (snap) => {
             const metaMap: Record<string, any> = {};
-            snap.forEach(doc => {
-                const data = doc.data();
-                if (data.nomeLista) metaMap[data.nomeLista.toLowerCase().trim()] = data;
+            snap.forEach(docSnap => {
+                const data = docSnap.data();
+                const docId = docSnap.id; // UID ou Nome
+                const nomeLista = (data.nomeLista || "").toLowerCase().trim();
+
+                metaMap[docId.toLowerCase()] = data;
+
+                if (nomeLista) {
+                    metaMap[nomeLista] = data;
+                }
             });
             setPlayersMeta(metaMap);
         });
@@ -191,12 +198,19 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
         try {
             const { DrawService } = await import("@/lib/draw.service.ts");
             const result = await DrawService.calculateTeams(groupId, match.confirmedPlayers)
+
             await updateDoc(doc(db, "groups", groupId, "matches", match.id), {
-                teams: result, status: "drawn", updatedAt: new Date()
+                teams: result,
+                status: "drawn", // Ajuste automático aqui
+                updatedAt: new Date()
             })
-            toast({ title: "SORTEIO CONCLUÍDO" })
-        } catch (e) { toast({ variant: "destructive", title: "ERRO NO SORTEIO" }) }
-        finally { setIsProcessing(false) }
+
+            toast({ title: "SORTEIO CONCLUÍDO", description: "Times definidos e status atualizado." })
+        } catch (e) {
+            toast({ variant: "destructive", title: "ERRO NO SORTEIO" })
+        } finally {
+            setIsProcessing(false)
+        }
     }
 
     const handleOpenVoting = async () => {
@@ -260,37 +274,54 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
 
     const PlayerIcon = ({ player, className }: { player: any, className: string }) => {
         const playerName = player?.name || (typeof player === 'string' ? player : "---");
-        const meta = playersMeta[playerName.toLowerCase().trim()];
+        const searchName = playerName.toLowerCase().trim();
+
+        let meta = playersMeta[searchName];
+
+        if (!meta) {
+            const fallbackKey = Object.keys(playersMeta).find(key =>
+                searchName.includes(key) || key.includes(searchName)
+            );
+            if (fallbackKey) meta = playersMeta[fallbackKey];
+        }
+
         const photo = meta?.photoURL || "";
-        let ovr = 70;
+
+        let displayOvr = 70;
+
         if (meta) {
             const t = Number(meta.technique) || 70;
             const c = Number(meta.finishing) || 70;
             const v = Number(meta.speed) || 70;
             const d = Number(meta.defense) || 70;
-            ovr = Math.round((t * 0.35) + (c * 0.35) + (v * 0.15) + (d * 0.15));
+
+            const ovrReal = (t * 0.35) + (c * 0.35) + (v * 0.15) + (d * 0.15);
+            displayOvr = Math.round(ovrReal);
         }
-        if (ovr > 99) ovr = 99;
+
+        if (displayOvr > 99) displayOvr = 99;
+        if (displayOvr < 10) displayOvr = 70;
 
         return (
             <div className={`absolute flex flex-col items-center transition-all duration-700 animate-in zoom-in-50 ${className}`}>
                 <div className="relative">
                     <Avatar className="size-14 border-2 border-primary/40 shadow-[0_0_15px_rgba(234,255,0,0.2)] bg-zinc-900">
                         <AvatarImage src={photo} className="object-cover" />
-                        <AvatarFallback className="text-white font-black italic text-[10px] flex items-center justify-center">
+                        <AvatarFallback className="text-white font-black italic text-[10px] flex items-center justify-center bg-zinc-800">
                             {playerName.substring(0, 1).toUpperCase()}
                         </AvatarFallback>
                     </Avatar>
-                    <div className="absolute -top-1 -right-1 bg-primary text-black text-[8px] font-black px-1.5 rounded-full ring-2 ring-emerald-950 min-w-5 h-5 flex items-center justify-center">
-                        {ovr}
+
+                    <div className="absolute -top-1 -right-1 bg-primary text-black text-[8px] font-black px-1.5 rounded-full ring-2 ring-emerald-950 min-w-5 h-5 flex items-center justify-center shadow-lg">
+                        {displayOvr}
                     </div>
                 </div>
                 <span className="mt-1 bg-black/60 backdrop-blur-md px-2.5 py-0.5 rounded-full text-[9px] font-black text-white uppercase italic border border-white/10 max-w-[90px] truncate">
-                    {playerName.split(' ')[0]}
-                </span>
+                {playerName.split(' ')[0]}
+            </span>
             </div>
         );
-    }
+    };
 
     return (
         <div className="min-h-screen bg-background text-foreground pb-32 font-sans selection:bg-primary/30">
@@ -311,19 +342,33 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
                     </div>
                     {isAdmin && (
                         <DropdownMenu>
-                            <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="bg-white/5 rounded-full text-white outline-none"><MoreVertical/></Button></DropdownMenuTrigger>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="bg-white/5 rounded-full text-white outline-none">
+                                    <MoreVertical/>
+                                </Button>
+                            </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="bg-[#1a1a1e] border-white/10 text-white text-[10px] font-black uppercase italic">
                                 <DropdownMenuItem onClick={copyToClipboard}><Copy className="size-4 mr-2" /> WhatsApp</DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => setIsEditing(true)}><Calendar className="size-4 mr-2" /> Alterar Data</DropdownMenuItem>
+
                                 <DropdownMenuSeparator className="bg-white/5" />
+
                                 {match.status === 'drawn' && (
-                                    <DropdownMenuItem onClick={handleOpenVoting} className="text-primary"><PlayCircle className="size-4 mr-2" /> Liberar Votação</DropdownMenuItem>
+                                    <DropdownMenuItem onClick={handleOpenVoting} className="text-primary">
+                                        <PlayCircle className="size-4 mr-2" /> Liberar Votação
+                                    </DropdownMenuItem>
                                 )}
+
                                 {match.status === 'voting_open' && (
-                                    <DropdownMenuItem onClick={handleFinalizeMatch} className="text-emerald-400"><CheckCircle2 className="size-4 mr-2" /> Encerrar Rodada</DropdownMenuItem>
+                                    <DropdownMenuItem onClick={handleFinalizeMatch} className="text-emerald-400">
+                                        <CheckCircle2 className="size-4 mr-2" /> Encerrar Rodada
+                                    </DropdownMenuItem>
                                 )}
+
                                 <DropdownMenuSeparator className="bg-white/5" />
-                                <DropdownMenuItem onClick={() => setIsDeleteDialogOpen(true)} className="text-red-500"><Trash2 className="size-4 mr-2" /> Excluir</DropdownMenuItem>
+
+                                <DropdownMenuItem onClick={() => setIsDeleteDialogOpen(true)} className="text-red-500">
+                                    <Trash2 className="size-4 mr-2" /> Excluir</DropdownMenuItem>
                             </DropdownMenuContent>
                         </DropdownMenu>
                     )}

@@ -25,16 +25,14 @@ export const MatchLogic = {
             const ratingsSnap = await getDocs(collection(db, "groups", groupId, "matches", matchId, "technical_ratings"));
 
             const statsAccumulator: Record<string, any> = {};
-            let totalTech = 0, totalSpeed = 0, totalFin = 0, totalDef = 0, totalVotedEntries = 0;
 
-            // 1. ACUMULAR VOTOS (Normalização de nomes para evitar que o jogador caia no 'voto solidário' por erro de digitação)
+            // 1. Acumular votos dos jogadores avaliados na rodada
             ratingsSnap.forEach(docSnap => {
                 const data = docSnap.data();
                 const playerRatings = data.ratings;
                 if (!playerRatings) return;
 
                 Object.keys(playerRatings).forEach(playerName => {
-                    // AJUSTE 1: Normalizamos a chave aqui e na busca abaixo
                     const pKey = playerName.toLowerCase().trim();
                     if (!statsAccumulator[pKey]) {
                         statsAccumulator[pKey] = { technique: [], speed: [], finishing: [], defense: [] };
@@ -44,19 +42,10 @@ export const MatchLogic = {
                     statsAccumulator[pKey].speed.push(p.speed);
                     statsAccumulator[pKey].finishing.push(p.finishing);
                     statsAccumulator[pKey].defense.push(p.defense);
-
-                    totalTech += p.technique; totalSpeed += p.speed; totalFin += p.finishing; totalDef += p.defense;
-                    totalVotedEntries++;
                 });
             });
 
-            const globalAvg = totalVotedEntries > 0 ? {
-                technique: (totalTech / totalVotedEntries) * 20,
-                speed: (totalSpeed / totalVotedEntries) * 20,
-                finishing: (totalFin / totalVotedEntries) * 20,
-                defense: (totalDef / totalVotedEntries) * 20
-            } : { technique: 70, speed: 70, finishing: 70, defense: 70 };
-
+            // 2. Buscar Metas existentes para vincular nomes ao UID correto
             const metaQuerySnap = await getDocs(collection(db, "groups", groupId, "players_meta"));
             const existingMetas = metaQuerySnap.docs.map(d => ({ id: d.id, ...d.data() })) as PlayerMeta[];
 
@@ -64,14 +53,18 @@ export const MatchLogic = {
             let calculatedMvp = "";
             const preMatchStats: any[] = [];
 
-            // 2. PROCESSAR CADA JOGADOR
+            // 3. Processar cada jogador da lista de confirmados
             for (const playerName of players) {
                 const nameLower = playerName.toLowerCase().trim();
 
-                // AJUSTE 2: Busca de meta mais robusta (por UID ou Nome)
-                const existingMeta = existingMetas.find(m => (m.nomeLista || "").toLowerCase().trim() === nameLower);
-                const targetDocId = existingMeta ? existingMeta.id : nameLower;
+                // Busca robusta para evitar duplicidade (ID longo vs nome curto)
+                const foundMeta = existingMetas.find(m => {
+                    const metaNomeLista = (m.nomeLista || "").toLowerCase().trim();
+                    const metaId = m.id.toLowerCase().trim();
+                    return metaNomeLista === nameLower || metaId === nameLower || metaNomeLista.includes(nameLower) || nameLower.includes(metaNomeLista);
+                });
 
+                const targetDocId = foundMeta ? foundMeta.id : nameLower;
                 const metaRef = doc(db, "groups", groupId, "players_meta", targetDocId);
                 const metaDoc = await getDoc(metaRef);
 
@@ -86,7 +79,6 @@ export const MatchLogic = {
                     };
                 }
 
-                // Backup dos status exatos antes do novo cálculo
                 preMatchStats.push({ playerId: targetDocId, oldStats: { ...current } });
 
                 const acc = statsAccumulator[nameLower];
@@ -94,38 +86,35 @@ export const MatchLogic = {
 
                 if (acc && acc.technique.length > 0) {
                     const count = acc.technique.length;
-                    round.technique = (acc.technique.reduce((a:any,b:any)=>a+b,0)/count)*20;
-                    round.speed = (acc.speed.reduce((a:any,b:any)=>a+b,0)/count)*20;
-                    round.finishing = (acc.finishing.reduce((a:any,b:any)=>a+b,0)/count)*20;
-                    round.defense = (acc.defense.reduce((a:any,b:any)=>a+b,0)/count)*20;
+                    round.technique = (acc.technique.reduce((a: number, b: number) => a + b, 0) / count) * 20;
+                    round.speed = (acc.speed.reduce((a: number, b: number) => a + b, 0) / count) * 20;
+                    round.finishing = (acc.finishing.reduce((a: number, b: number) => a + b, 0) / count) * 20;
+                    round.defense = (acc.defense.reduce((a: number, b: number) => a + b, 0) / count) * 20;
 
-                    const perf = (round.technique*0.4)+(round.finishing*0.3)+(round.speed*0.15)+(round.defense*0.15);
-                    if (perf > bestRoundPerf) {
-                        bestRoundPerf = perf;
-                        calculatedMvp = existingMeta?.nomeLista || playerName;
+                    const currentPerf = (round.technique * 0.4) + (round.finishing * 0.3) + (round.speed * 0.15) + (round.defense * 0.15);
+                    if (currentPerf > bestRoundPerf) {
+                        bestRoundPerf = currentPerf;
+                        calculatedMvp = foundMeta?.nomeLista || playerName;
                     }
                 } else {
-                    round = {
-                        technique: globalAvg.technique * 0.9,
-                        speed: globalAvg.speed * 0.9,
-                        finishing: globalAvg.finishing * 0.9,
-                        defense: globalAvg.defense * 0.9
-                    };
+                    // Se não houve votos, a performance da rodada é igual à atual (sem mudança)
+                    round = { ...current };
                 }
 
-                // AJUSTE 3: LÓGICA ASSIMÉTRICA COM COMPARAÇÃO INDIVIDUAL
-                // Aqui resolvemos o problema de subir menos: cada atributo é comparado isoladamente
+                /**
+                 * LÓGICA DE PROGRESSÃO:
+                 * Se a nota da rodada (rnd) for maior que a atual (curr), sobe 5% da diferença.
+                 * Se for menor ou igual, mantém o valor atual (nível conquistado não se perde).
+                 */
                 const calc = (curr: number, rnd: number) => {
-                    // Se a nota da rodada for maior que a ATUAL daquele atributo específico
-                    const isImprovement = rnd > curr;
-                    const weight = isImprovement ? 0.10 : 0.02;
-
-                    const newValue = (curr * (1 - weight)) + (rnd * weight);
-                    return Math.max(70, newValue);
+                    if (rnd <= curr) return curr;
+                    const weight = 0.05;
+                    const novoValor = (curr * (1 - weight)) + (rnd * weight);
+                    return Number(novoValor.toFixed(2));
                 };
 
                 await setDoc(metaRef, {
-                    nomeLista: existingMeta?.nomeLista || playerName,
+                    nomeLista: foundMeta?.nomeLista || playerName,
                     technique: calc(current.technique, round.technique),
                     speed: calc(current.speed, round.speed),
                     finishing: calc(current.finishing, round.finishing),
@@ -142,6 +131,9 @@ export const MatchLogic = {
             });
 
             return { success: true };
-        } catch (e) { console.error(e); throw e; }
+        } catch (e) {
+            console.error("Erro ao finalizar partida:", e);
+            throw e;
+        }
     }
 };

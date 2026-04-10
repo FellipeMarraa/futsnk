@@ -67,9 +67,25 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
 
     useEffect(() => {
         if (!groupId) return;
-        const q = query(collection(db, "groups", groupId, "matches"), orderBy("date", "desc"));
+
+        const q = query(
+            collection(db, "groups", groupId, "matches"),
+            orderBy("date", "desc"),
+            orderBy("createdAt", "desc")
+        );
+
         const unsubscribe = onSnapshot(q, (snap) => {
-            setMatches(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+            const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+            const sorted = [...docs].sort((a: any, b: any) => {
+                if (a.date !== b.date) return 0;
+
+                const timeA = a.createdAt?.seconds || a.createdAt?.toMillis?.() || Date.now();
+                const timeB = b.createdAt?.seconds || b.createdAt?.toMillis?.() || Date.now();
+                return timeB - timeA;
+            });
+
+            setMatches(sorted);
         });
         return () => unsubscribe();
     }, [groupId]);
@@ -244,6 +260,24 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
                             <div className="grid gap-3 w-full">
                                 {matches.map((match, idx) => {
                                     const votingOpen = isVotingOpen(match.date, group.time);
+
+                                    const matchNumber = matches.length - idx;
+
+                                    const getStatusConfig = (status: string) => {
+                                        switch (status) {
+                                            case 'finished':
+                                                return { label: 'Encerrada', color: 'bg-zinc-500/10 text-zinc-500 border-zinc-500/20' };
+                                            case 'voting_open':
+                                                return { label: 'Votação Aberta', color: 'bg-amber-500/10 text-amber-500 border-amber-500/20 animate-pulse' };
+                                            case 'drawn':
+                                                return { label: 'Sorteada', color: 'bg-blue-500/10 text-blue-400 border-blue-500/20' };
+                                            default:
+                                                return { label: 'Iniciada', color: 'bg-primary/10 text-primary border-primary/20' };
+                                        }
+                                    };
+
+                                    const matchStatus = getStatusConfig(match.status);
+
                                     return (
                                         <Card
                                             key={match.id}
@@ -252,18 +286,20 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
                                         >
                                             <CardContent className="p-4 flex items-center justify-between">
                                                 <div className="flex items-center gap-4 min-w-0">
+                                                    {/* Bloco da Data */}
                                                     <div className="size-11 rounded-xl bg-zinc-900 border border-white/5 flex flex-col items-center justify-center shrink-0 shadow-inner">
                                                         <span className="text-[10px] font-black text-primary leading-none uppercase">
-                                                            {new Date(match.date).toLocaleDateString('pt-BR', { day: '2-digit', timeZone: 'UTC' })}
+                                                            {new Date(match.date + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit' })}
                                                         </span>
-                                                        <span className="text-[7px] text-white/40 uppercase font-bold">
-                                                            {new Date(match.date).toLocaleDateString('pt-BR', { month: 'short', timeZone: 'UTC' }).replace('.', '')}
+                                                                                    <span className="text-[7px] text-white/40 uppercase font-bold">
+                                                            {new Date(match.date + 'T00:00:00').toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '')}
                                                         </span>
                                                     </div>
+
                                                     <div className="min-w-0">
                                                         <div className="flex items-center gap-2">
                                                             <p className="font-black italic text-sm text-white uppercase tracking-tight truncate">
-                                                                Rodada #{matches.length - idx}
+                                                                Rodada #{matchNumber}
                                                             </p>
                                                             {match.status === 'drawn' && votingOpen && (
                                                                 <div className="size-2 bg-amber-500 rounded-full animate-pulse shrink-0" />
@@ -274,17 +310,16 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
                                                         </span>
                                                     </div>
                                                 </div>
+                                                {/* Badge de Status */}
                                                 <div className="flex items-center gap-3 shrink-0">
-                                                    {match.status === 'open' ? (
-                                                        <Badge className="bg-primary/10 text-primary border border-primary/20 text-[8px] font-black uppercase italic tracking-tighter rounded">Inscrições</Badge>
-                                                    ) : (
-                                                        <Badge className="bg-white/5 text-white/40 border border-white/10 text-[8px] font-black uppercase italic tracking-tighter rounded">Encerrado</Badge>
-                                                    )}
-                                                    <ChevronRight className="size-4 text-primary group-active:translate-x-1 transition-transform" />
+                                                    <Badge className={`${matchStatus.color} border text-[8px] font-black uppercase italic tracking-tighter rounded px-2`}>
+                                                        {matchStatus.label}
+                                                    </Badge>
+                                                    <ChevronRight className="size-4 text-primary" />
                                                 </div>
                                             </CardContent>
                                         </Card>
-                                    )
+                                    );
                                 })}
                             </div>
                         )}
