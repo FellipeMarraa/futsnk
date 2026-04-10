@@ -314,8 +314,8 @@ export function Dashboard({ onSelectGroup }: { onSelectGroup: (groupId: string) 
                 isOpen={isProfileOpen}
                 onClose={() => setIsProfileOpen(false)}
                 user={user}
-                // Se quiser o perfil global, não passe groupId.
-                // Se quiser as notas de um grupo específico, teria que passar o ID ativo.
+                initialGroupId={groups[0]?.id}
+                allGroups={groups}
             />
             <CreateGroupDialog isOpen={isCreateModalOpen} groupToEdit={groupToEdit} onClose={() => { setIsCreateModalOpen(false); setGroupToEdit(null); }} onSuccess={fetchGroups} />
         </div>

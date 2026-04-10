@@ -25,69 +25,60 @@ export const MatchLogic = {
             const ratingsSnap = await getDocs(collection(db, "groups", groupId, "matches", matchId, "technical_ratings"));
 
             const statsAccumulator: Record<string, any> = {};
-
-            // --- 1. ACUMULAR VOTOS E CALCULAR MÉDIA GLOBAL DA RODADA ---
             let totalTech = 0, totalSpeed = 0, totalFin = 0, totalDef = 0, totalVotedEntries = 0;
 
+            // 1. ACUMULAR VOTOS (Normalização de nomes para evitar que o jogador caia no 'voto solidário' por erro de digitação)
             ratingsSnap.forEach(docSnap => {
                 const data = docSnap.data();
                 const playerRatings = data.ratings;
                 if (!playerRatings) return;
 
                 Object.keys(playerRatings).forEach(playerName => {
-                    if (!statsAccumulator[playerName]) {
-                        statsAccumulator[playerName] = { technique: [], speed: [], finishing: [], defense: [] };
+                    // AJUSTE 1: Normalizamos a chave aqui e na busca abaixo
+                    const pKey = playerName.toLowerCase().trim();
+                    if (!statsAccumulator[pKey]) {
+                        statsAccumulator[pKey] = { technique: [], speed: [], finishing: [], defense: [] };
                     }
                     const p = playerRatings[playerName];
+                    statsAccumulator[pKey].technique.push(p.technique);
+                    statsAccumulator[pKey].speed.push(p.speed);
+                    statsAccumulator[pKey].finishing.push(p.finishing);
+                    statsAccumulator[pKey].defense.push(p.defense);
 
-                    statsAccumulator[playerName].technique.push(p.technique);
-                    statsAccumulator[playerName].speed.push(p.speed);
-                    statsAccumulator[playerName].finishing.push(p.finishing);
-                    statsAccumulator[playerName].defense.push(p.defense);
-
-                    totalTech += p.technique;
-                    totalSpeed += p.speed;
-                    totalFin += p.finishing;
-                    totalDef += p.defense;
+                    totalTech += p.technique; totalSpeed += p.speed; totalFin += p.finishing; totalDef += p.defense;
                     totalVotedEntries++;
                 });
             });
 
-            const globalRoundAverage = totalVotedEntries > 0 ? {
+            const globalAvg = totalVotedEntries > 0 ? {
                 technique: (totalTech / totalVotedEntries) * 20,
                 speed: (totalSpeed / totalVotedEntries) * 20,
                 finishing: (totalFin / totalVotedEntries) * 20,
                 defense: (totalDef / totalVotedEntries) * 20
-            } : { technique: 75, speed: 75, finishing: 75, defense: 75 };
+            } : { technique: 70, speed: 70, finishing: 70, defense: 70 };
 
             const metaQuerySnap = await getDocs(collection(db, "groups", groupId, "players_meta"));
-            const existingMetas = metaQuerySnap.docs.map(d => ({
-                id: d.id,
-                ...d.data()
-            })) as PlayerMeta[];
+            const existingMetas = metaQuerySnap.docs.map(d => ({ id: d.id, ...d.data() })) as PlayerMeta[];
 
-            let bestRoundPerformance = -1;
-            let calculatedMvpName = "";
+            let bestRoundPerf = -1;
+            let calculatedMvp = "";
             const preMatchStats: any[] = [];
 
-            // --- 2. LOOP DE PROCESSAMENTO POR JOGADOR ---
+            // 2. PROCESSAR CADA JOGADOR
             for (const playerName of players) {
                 const nameLower = playerName.toLowerCase().trim();
 
-                const existingMeta = existingMetas.find(m => {
-                    const metaNome = (m.nomeLista || "").toLowerCase().trim();
-                    return metaNome === nameLower || nameLower.includes(metaNome) || metaNome.includes(nameLower);
-                });
-
+                // AJUSTE 2: Busca de meta mais robusta (por UID ou Nome)
+                const existingMeta = existingMetas.find(m => (m.nomeLista || "").toLowerCase().trim() === nameLower);
                 const targetDocId = existingMeta ? existingMeta.id : nameLower;
+
                 const metaRef = doc(db, "groups", groupId, "players_meta", targetDocId);
                 const metaDoc = await getDoc(metaRef);
 
-                let currentStats = { technique: 70, speed: 70, finishing: 70, defense: 70 };
-
+                let current = { technique: 70, speed: 70, finishing: 70, defense: 70 };
                 if (metaDoc.exists()) {
                     const d = metaDoc.data();
-                    currentStats = {
+                    current = {
                         technique: Number(d.technique) || 70,
                         speed: Number(d.speed) || 70,
                         finishing: Number(d.finishing) || 70,
@@ -95,71 +86,62 @@ export const MatchLogic = {
                     };
                 }
 
-                preMatchStats.push({
-                    playerId: targetDocId,
-                    oldStats: currentStats
-                });
+                // Backup dos status exatos antes do novo cálculo
+                preMatchStats.push({ playerId: targetDocId, oldStats: { ...current } });
 
-                const acc = statsAccumulator[playerName];
-                let roundTech, roundSpeed, roundFin, roundDef;
+                const acc = statsAccumulator[nameLower];
+                let round = { technique: 0, speed: 0, finishing: 0, defense: 0 };
 
                 if (acc && acc.technique.length > 0) {
                     const count = acc.technique.length;
-                    roundTech = (acc.technique.reduce((a: any, b: any) => a + b, 0) / count) * 20;
-                    roundSpeed = (acc.speed.reduce((a: any, b: any) => a + b, 0) / count) * 20;
-                    roundFin = (acc.finishing.reduce((a: any, b: any) => a + b, 0) / count) * 20;
-                    roundDef = (acc.defense.reduce((a: any, b: any) => a + b, 0) / count) * 20;
+                    round.technique = (acc.technique.reduce((a:any,b:any)=>a+b,0)/count)*20;
+                    round.speed = (acc.speed.reduce((a:any,b:any)=>a+b,0)/count)*20;
+                    round.finishing = (acc.finishing.reduce((a:any,b:any)=>a+b,0)/count)*20;
+                    round.defense = (acc.defense.reduce((a:any,b:any)=>a+b,0)/count)*20;
 
-                    const currentPerformance = (roundTech * 0.4) + (roundFin * 0.3) + (roundSpeed * 0.15) + (roundDef * 0.15);
-                    if (currentPerformance > bestRoundPerformance) {
-                        bestRoundPerformance = currentPerformance;
-                        calculatedMvpName = existingMeta?.nomeLista || playerName;
+                    const perf = (round.technique*0.4)+(round.finishing*0.3)+(round.speed*0.15)+(round.defense*0.15);
+                    if (perf > bestRoundPerf) {
+                        bestRoundPerf = perf;
+                        calculatedMvp = existingMeta?.nomeLista || playerName;
                     }
                 } else {
-                    roundTech = globalRoundAverage.technique * 0.9;
-                    roundSpeed = globalRoundAverage.speed * 0.9;
-                    roundFin = globalRoundAverage.finishing * 0.9;
-                    roundDef = globalRoundAverage.defense * 0.9;
+                    round = {
+                        technique: globalAvg.technique * 0.9,
+                        speed: globalAvg.speed * 0.9,
+                        finishing: globalAvg.finishing * 0.9,
+                        defense: globalAvg.defense * 0.9
+                    };
                 }
 
-                /**
-                 * LÓGICA DE EVOLUÇÃO ASSIMÉTRICA:
-                 * Subir é fácil (10% de impacto), descer é difícil (apenas 2% de impacto).
-                 * Isso valoriza o bom desempenho e protege o histórico de um jogo ruim.
-                 */
-                const calculateAsymmetricStat = (current: number, round: number) => {
-                    const isImprovement = round > current;
-                    const weight = isImprovement ? 0.10 : 0.02; // 10% para subir, 2% para descer
-                    const newValue = (current * (1 - weight)) + (round * weight);
-                    return Math.max(70, newValue); // Piso de 70 garantido
-                };
+                // AJUSTE 3: LÓGICA ASSIMÉTRICA COM COMPARAÇÃO INDIVIDUAL
+                // Aqui resolvemos o problema de subir menos: cada atributo é comparado isoladamente
+                const calc = (curr: number, rnd: number) => {
+                    // Se a nota da rodada for maior que a ATUAL daquele atributo específico
+                    const isImprovement = rnd > curr;
+                    const weight = isImprovement ? 0.10 : 0.02;
 
-                const finalTech = calculateAsymmetricStat(currentStats.technique, roundTech);
-                const finalSpeed = calculateAsymmetricStat(currentStats.speed, roundSpeed);
-                const finalFin = calculateAsymmetricStat(currentStats.finishing, roundFin);
-                const finalDef = calculateAsymmetricStat(currentStats.defense, roundDef);
+                    const newValue = (curr * (1 - weight)) + (rnd * weight);
+                    return Math.max(70, newValue);
+                };
 
                 await setDoc(metaRef, {
                     nomeLista: existingMeta?.nomeLista || playerName,
-                    technique: finalTech,
-                    speed: finalSpeed,
-                    finishing: finalFin,
-                    defense: finalDef,
+                    technique: calc(current.technique, round.technique),
+                    speed: calc(current.speed, round.speed),
+                    finishing: calc(current.finishing, round.finishing),
+                    defense: calc(current.defense, round.defense),
                     lastUpdated: serverTimestamp()
                 }, { merge: true });
             }
 
             await updateDoc(matchRef, {
                 status: "finished",
-                mvp: calculatedMvpName || "Ninguém",
+                mvp: calculatedMvp || "Ninguém",
                 preMatchStats: preMatchStats,
                 updatedAt: serverTimestamp()
             });
 
             return { success: true };
-        } catch (e) {
-            console.error("Erro ao finalizar rodada:", e);
-            throw e;
-        }
+        } catch (e) { console.error(e); throw e; }
     }
 };

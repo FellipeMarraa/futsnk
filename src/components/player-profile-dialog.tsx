@@ -1,128 +1,247 @@
 import {useEffect, useState} from "react"
 import {db} from "@/lib/firebase"
-import {collection, doc, getDoc, getDocs, limit, orderBy, query} from "firebase/firestore"
-import {Dialog, DialogContent} from "@/components/ui/dialog"
+import {collection, doc, getDoc, getDocs, limit, query} from "firebase/firestore"
+import {Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle} from "@/components/ui/dialog"
 import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar"
-import {Clock, Shield, Star, Target, TrendingUp, Zap} from "lucide-react"
+import {ChevronDown, Clock, Shield, Star, Target, TrendingUp, Zap} from "lucide-react"
+import * as VisuallyHidden from "@radix-ui/react-visually-hidden"
+import {DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger} from "@/components/ui/dropdown-menu"
+import {AlertCircle} from "lucide-react"
 
-export function PlayerProfileDialog({ isOpen, onClose, user, groupId }: { isOpen: boolean, onClose: () => void, user: any, groupId?: string }) {
+export function PlayerProfileDialog({ isOpen, onClose, user, initialGroupId, allGroups }: {
+    isOpen: boolean,
+    onClose: () => void,
+    user: any,
+    initialGroupId: string,
+    allGroups: any[]
+}) {
+    const [activeGroupId, setActiveGroupId] = useState(initialGroupId);
     const [stats, setStats] = useState<any>(null)
-    const [recentRatings, setRecentRatings] = useState<any[]>([])
-    const [, setLoading] = useState(true)
+    const [lastMatchStats, setLastMatchStats] = useState<any>(null)
+    const [loading, setLoading] = useState(false)
+
+    const activeGroupName = allGroups.find(g => g.id === activeGroupId)?.name || "Clube";
 
     useEffect(() => {
-        if (!isOpen || !user?.uid) return;
+        if (!isOpen || !user?.uid || !activeGroupId) return;
 
         const fetchPlayerData = async () => {
             setLoading(true)
             try {
-                // 1. Buscar Atributos Atuais (OVR)
-                // Tentamos buscar no players_meta do grupo atual ou perfil global
-                const metaRef = doc(db, "groups", groupId || "global", "players_meta", user.uid);
+                // 1. Buscar Atributos Atuais do Jogador no Grupo
+                const metaRef = doc(db, "groups", activeGroupId, "players_meta", user.uid);
                 const metaSnap = await getDoc(metaRef);
-
+                let data = null;
                 if (metaSnap.exists()) {
-                    setStats(metaSnap.data());
+                    data = metaSnap.data();
+                } else if (user.nomeLista) {
+                    const ghostRef = doc(db, "groups", activeGroupId, "players_meta", user.nomeLista.toLowerCase().trim());
+                    const ghostSnap = await getDoc(ghostRef);
+                    if (ghostSnap.exists()) data = ghostSnap.data();
                 }
+                setStats(data);
 
-                // 2. Buscar Desempenho Recente (Últimas 5 partidas)
-                if (groupId) {
-                    const ratingsRef = collection(db, "groups", groupId, "matches");
-                    const q = query(ratingsRef, orderBy("updatedAt", "desc"), limit(5));
-                    const matchesSnap = await getDocs(q);
+                // 2. Buscar Médias da Última Partida (Filtro via JS para evitar erro de índice 400)
+                const matchesRef = collection(db, "groups", activeGroupId, "matches");
+                const matchesSnap = await getDocs(query(matchesRef, limit(20)));
 
-                    const history: any[] = [];
-                    matchesSnap.docs.forEach(matchDoc => {
-                        const data = matchDoc.data();
-                        // Aqui você pode filtrar o resumo da partida para este jogador
-                        // Note: Não exibimos quem votou, apenas a média final daquela rodada
-                        if (data.status === "finished") {
-                            history.push({
-                                date: data.date,
-                                mvp: data.mvp === user.nomeLista
-                            });
-                        }
+                const finishedMatches = matchesSnap.docs
+                    .map(d => ({ id: d.id, ...d.data() as any }))
+                    .filter(m => m.status === "finished")
+                    .sort((a, b) => {
+                        const timeA = a.updatedAt?.seconds || 0;
+                        const timeB = b.updatedAt?.seconds || 0;
+                        return timeB - timeA;
                     });
-                    setRecentRatings(history);
+
+                if (finishedMatches.length > 0) {
+                    const lastMatch = finishedMatches[0];
+                    const ratingsCol = collection(db, "groups", activeGroupId, "matches", lastMatch.id, "technical_ratings");
+                    const ratingsSnap = await getDocs(ratingsCol);
+
+                    const sums = { technique: 0, speed: 0, finishing: 0, defense: 0, count: 0 };
+                    const myNameNormalized = user.nomeLista.toLowerCase().trim();
+
+                    ratingsSnap.forEach(rDoc => {
+                        const rData = rDoc.data().ratings;
+                        if (!rData) return;
+
+                        // Busca o jogador dentro das avaliações desta partida com normalização
+                        Object.keys(rData).forEach(pName => {
+                            const pNameNormalized = pName.toLowerCase().trim();
+                            if (pNameNormalized === myNameNormalized ||
+                                myNameNormalized.includes(pNameNormalized) ||
+                                pNameNormalized.includes(myNameNormalized)) {
+                                sums.technique += rData[pName].technique || 0;
+                                sums.speed += rData[pName].speed || 0;
+                                sums.finishing += rData[pName].finishing || 0;
+                                sums.defense += rData[pName].defense || 0;
+                                sums.count++;
+                            }
+                        });
+                    });
+
+                    if (sums.count > 0) {
+                        setLastMatchStats({
+                            technique: sums.technique / sums.count,
+                            speed: sums.speed / sums.count,
+                            finishing: sums.finishing / sums.count,
+                            defense: sums.defense / sums.count,
+                            isMvp: lastMatch.mvp?.toLowerCase().trim() === myNameNormalized
+                        });
+                    } else {
+                        setLastMatchStats(null);
+                    }
+                } else {
+                    setLastMatchStats(null);
                 }
             } catch (e) {
-                console.error(e);
+                console.error("Erro ao carregar perfil:", e);
             } finally {
                 setLoading(false)
             }
         }
 
         fetchPlayerData();
-    }, [isOpen, user, groupId]);
+    }, [isOpen, user, activeGroupId]);
 
     const calculateOVR = (s: any) => {
         if (!s) return 70;
-        return Math.round((s.technique * 0.35) + (s.finishing * 0.35) + (s.speed * 0.15) + (s.defense * 0.15));
+        const t = Number(s.technique) || 70;
+        const f = Number(s.finishing) || 70;
+        const v = Number(s.speed) || 70;
+        const d = Number(s.defense) || 70;
+        return Math.round((t * 0.35) + (f * 0.35) + (v * 0.15) + (d * 0.15));
     }
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="bg-[#0c0c0e] border-white/10 p-0 overflow-hidden max-w-sm rounded-[2.5rem] outline-none">
+            <DialogContent className="bg-[#0c0c0e] border-white/10 p-0 overflow-hidden max-w-sm rounded-[2.5rem] outline-none shadow-2xl">
+                <VisuallyHidden.Root>
+                    <DialogHeader>
+                        <DialogTitle>Perfil de Atleta</DialogTitle>
+                        <DialogDescription>Dados de performance por grupo</DialogDescription>
+                    </DialogHeader>
+                </VisuallyHidden.Root>
+
                 <div className="relative pt-12 pb-8 px-6 flex flex-col items-center">
-                    {/* Background Glow */}
                     <div className="absolute top-0 inset-x-0 h-32 bg-gradient-to-b from-primary/20 to-transparent pointer-events-none" />
 
-                    {/* OVR Badge */}
+                    {/* SELETOR DE GRUPO - Alinhado com OVR */}
+                    <div className="absolute top-8 right-8 z-20">
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <button className="flex items-center gap-2 bg-white/5 border border-white/10 px-4 py-2 rounded-full text-[9px] font-black uppercase italic text-white hover:bg-white/10 transition-all shadow-xl active:scale-95">
+                                    {activeGroupName} <ChevronDown className="size-3 text-primary" />
+                                </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="bg-[#1a1a1e] border-white/10 text-white min-w-[140px] rounded-xl shadow-2xl">
+                                {allGroups.map((group) => (
+                                    <DropdownMenuItem
+                                        key={group.id}
+                                        onClick={() => setActiveGroupId(group.id)}
+                                        className="text-[9px] font-black uppercase italic py-2 cursor-pointer focus:bg-primary focus:text-black transition-colors"
+                                    >
+                                        {group.name}
+                                    </DropdownMenuItem>
+                                ))}
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    </div>
+
+                    {/* Badge de OVR */}
                     <div className="absolute top-8 left-8 flex flex-col items-center">
                         <span className="text-4xl font-black italic text-white tracking-tighter leading-none">
                             {calculateOVR(stats)}
                         </span>
-                        <span className="text-[10px] font-black text-primary uppercase">OVR</span>
+                        <span className="text-[10px] font-black text-primary uppercase tracking-widest">OVR</span>
                     </div>
 
-                    <Avatar className="size-32 border-4 border-primary/30 shadow-[0_0_40px_rgba(234,255,0,0.15)] mb-4">
+                    <Avatar className="size-32 border-4 border-primary/30 shadow-[0_0_40px_rgba(234,255,0,0.15)] mb-4 bg-zinc-900">
                         <AvatarImage src={user?.photoURL} className="object-cover" />
-                        <AvatarFallback className="bg-zinc-900 text-3xl font-black italic">{user?.nomeLista?.[0]}</AvatarFallback>
+                        <AvatarFallback className="bg-zinc-800 text-white font-black text-5xl italic uppercase">
+                            {user?.nomeLista?.[0]}
+                        </AvatarFallback>
                     </Avatar>
 
-                    <h2 className="text-2xl font-black italic uppercase text-white tracking-tighter text-center">
+                    <h2 className="text-2xl font-black italic uppercase text-white tracking-tighter text-center leading-none mb-1">
                         {user?.nomeLista}
                     </h2>
-                    <p className="text-[9px] font-bold text-white/30 uppercase tracking-[0.4em] mb-8">Estatísticas da Temporada</p>
+                    <p className="text-[9px] font-bold text-white/30 uppercase tracking-[0.4em] mb-8">
+                        {loading ? "Sincronizando..." : "Estatísticas da Temporada"}
+                    </p>
 
-                    {/* Atributos Estilo FIFA */}
-                    <div className="w-full grid grid-cols-2 gap-4 mb-8">
-                        <AttributeItem label="TEC" value={stats?.technique} icon={<TrendingUp className="size-3" />} />
-                        <AttributeItem label="FIN" value={stats?.finishing} icon={<Target className="size-3" />} />
-                        <AttributeItem label="VEL" value={stats?.speed} icon={<Zap className="size-3" />} />
-                        <AttributeItem label="DEF" value={stats?.defense} icon={<Shield className="size-3" />} />
+                    <div className="w-full grid grid-cols-2 gap-3 mb-8">
+                        <AttributeItem label="Técnica" value={stats?.technique} icon={<TrendingUp className="size-3" />} />
+                        <AttributeItem label="Chute" value={stats?.finishing} icon={<Target className="size-3" />} />
+                        <AttributeItem label="Velocidade" value={stats?.speed} icon={<Zap className="size-3" />} />
+                        <AttributeItem label="Defesa" value={stats?.defense} icon={<Shield className="size-3" />} />
                     </div>
 
-                    {/* Desempenho Recente */}
-                    <div className="w-full bg-white/5 rounded-2xl p-4 border border-white/5">
-                        <h4 className="text-[8px] font-black text-white/40 uppercase tracking-[0.2em] mb-3 flex items-center gap-2">
-                            <Clock className="size-3" /> Forma Recente
-                        </h4>
-                        <div className="flex gap-2">
-                            {recentRatings.length > 0 ? recentRatings.map((match, i) => (
-                                <div key={i} className={`h-6 flex-1 rounded-md flex items-center justify-center border ${match.mvp ? 'bg-primary/20 border-primary/40' : 'bg-white/5 border-white/10'}`}>
-                                    {match.mvp ? <Star className="size-3 text-primary fill-primary" /> : <div className="size-1 bg-white/20 rounded-full" />}
+                    {/* SECTION: ÚLTIMA ATUAÇÃO DETALHADA */}
+                    <div className="w-full bg-white/[0.03] rounded-[2rem] p-5 border border-white/5 shadow-inner">
+                        <div className="flex items-center justify-between mb-4">
+                            <h4 className="text-[9px] font-black text-white/40 uppercase tracking-[0.2em] flex items-center gap-2">
+                                <Clock className="size-3 text-primary" /> Última Atuação
+                            </h4>
+                            {lastMatchStats?.isMvp && (
+                                <div className="flex items-center gap-1 bg-primary/20 px-2 py-0.5 rounded-full border border-primary/30 animate-in zoom-in duration-300">
+                                    <Star className="size-2.5 text-primary fill-primary" />
+                                    <span className="text-[8px] font-black text-primary uppercase italic">MVP</span>
                                 </div>
-                            )) : (
-                                <p className="text-[8px] text-white/20 uppercase italic font-bold">Nenhuma partida finalizada</p>
                             )}
                         </div>
+
+                        {lastMatchStats ? (
+                            <div className="space-y-3">
+                                <RatingRow label="Técnica" value={lastMatchStats.technique} />
+                                <RatingRow label="Velocidade" value={lastMatchStats.speed} />
+                                <RatingRow label="Chute" value={lastMatchStats.finishing} />
+                                <RatingRow label="Defesa" value={lastMatchStats.defense} />
+                            </div>
+                        ) : (
+                            <div className="flex flex-col items-center py-4 opacity-20">
+                                <AlertCircle className="size-5 mb-2" />
+                                <p className="text-[8px] uppercase italic font-bold tracking-widest text-center">
+                                    Dados não disponíveis para esta rodada
+                                </p>
+                            </div>
+                        )}
                     </div>
                 </div>
+                <div className="h-2 w-full bg-primary/20" />
             </DialogContent>
         </Dialog>
     )
 }
 
-function AttributeItem({ label, value, icon }: any) {
-    const val = Math.round(value || 70);
+function RatingRow({ label, value }: { label: string, value: number }) {
     return (
-        <div className="flex items-center justify-between bg-white/5 rounded-xl px-4 py-3 border border-white/5">
-            <div className="flex items-center gap-2">
-                <span className="text-primary/60">{icon}</span>
-                <span className="text-[10px] font-black text-white/60 uppercase">{label}</span>
+        <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold text-white/50 uppercase tracking-tighter">{label}</span>
+            <div className="flex gap-1">
+                {[1, 2, 3, 4, 5].map((s) => (
+                    <Star
+                        key={s}
+                        size={12}
+                        className={s <= Math.round(value) ? "text-primary fill-primary" : "text-white/5"}
+                    />
+                ))}
             </div>
-            <span className="text-sm font-black italic text-white">{val}</span>
         </div>
     )
 }
+
+function AttributeItem({ label, value, icon }: any) {
+    const val = Math.round(Number(value) || 70);
+    return (
+        <div className="flex items-center justify-between bg-white/[0.03] rounded-xl px-4 py-3 border border-white/5 hover:bg-white/[0.05] transition-colors">
+            <div className="flex items-center gap-2">
+                <span className="text-primary/60">{icon}</span>
+                <span className="text-[10px] font-black text-white/50 uppercase tracking-tighter">{label}</span>
+            </div>
+            <span className="text-base font-black italic text-white tracking-tighter">{val}</span>
+        </div>
+    )
+}
+
