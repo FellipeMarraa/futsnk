@@ -16,6 +16,7 @@ interface PlayerMeta {
     speed?: number;
     finishing?: number;
     defense?: number;
+    userId?: string;
 }
 
 export const MatchLogic = {
@@ -59,11 +60,16 @@ export const MatchLogic = {
                 const potentialMetas = existingMetas.filter(m => {
                     const metaNomeLista = (m.nomeLista || "").toLowerCase().trim();
                     const metaId = m.id.toLowerCase().trim();
-                    return metaNomeLista === nameLower || metaId === nameLower || metaNomeLista.includes(nameLower);
+
+                    // O documento combina se o ID for o nome do zap OU se o campo nomeLista for o nome do zap
+                    // OU se o nome do zap estiver contido no nome oficial (ex: 'marra' em 'Fellipe Marra')
+                    return (
+                        metaId === nameLower ||
+                        metaNomeLista === nameLower ||
+                        (nameLower.length > 3 && metaNomeLista.includes(nameLower))
+                    );
                 });
-
-                const officialMeta = potentialMetas.find(m => m.id === (m as any).userId);
-
+                const officialMeta = potentialMetas.find(m => m.userId && m.userId !== "");
                 const foundMeta = officialMeta || potentialMetas[0];
                 const targetDocId = foundMeta ? foundMeta.id : nameLower;
 

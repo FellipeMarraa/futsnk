@@ -28,14 +28,17 @@ export function PlayerProfileDialog({ isOpen, onClose, user, initialGroupId, all
         const fetchPlayerData = async () => {
             setLoading(true)
             try {
-                // 1. Buscar Atributos Atuais do Jogador no Grupo
+                // PRIORIDADE 1: Buscar pelo UID (Garante que pegue os 73 de defesa)
                 const metaRef = doc(db, "groups", activeGroupId, "players_meta", user.uid);
                 const metaSnap = await getDoc(metaRef);
+
                 let data = null;
                 if (metaSnap.exists()) {
                     data = metaSnap.data();
-                } else if (user.nomeLista) {
-                    const ghostRef = doc(db, "groups", activeGroupId, "players_meta", user.nomeLista.toLowerCase().trim());
+                } else {
+                    // PRIORIDADE 2: Fallback para o nome (Caso ainda não tenha vinculado)
+                    const nomeBusca = user.nomeLista?.toLowerCase().trim() || "";
+                    const ghostRef = doc(db, "groups", activeGroupId, "players_meta", nomeBusca);
                     const ghostSnap = await getDoc(ghostRef);
                     if (ghostSnap.exists()) data = ghostSnap.data();
                 }

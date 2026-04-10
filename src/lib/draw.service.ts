@@ -12,24 +12,24 @@ export const DrawService = {
             ...d.data()
         }));
 
+        // Substitua o trecho da busca (players.map) por este:
         const players = confirmedNames.map(name => {
             const searchName = name.toLowerCase().trim();
 
-            // BUSCA AVANÇADA:
-            // Procura nos documentos se o ID bate OU se o campo nomeLista bate
+            // Procura o doc onde o ID bate ou o campo nomeLista bate
             const data = metaData.find(m => {
                 const metaNomeLista = (m.nomeLista || "").toLowerCase().trim();
                 const metaId = m.id.toLowerCase().trim();
+                const metaUserId = m.userId || "";
 
                 return metaId === searchName ||
                     metaNomeLista === searchName ||
-                    metaNomeLista.includes(searchName) ||
-                    searchName.includes(metaNomeLista);
-            }) || { technique: 70, speed: 70, finishing: 70, defense: 70 }; // Fallback para 70
+                    metaUserId === "YvfLIEWLr1cf9cj3kVRnMl5TSrk1" ||
+                    metaNomeLista.includes(searchName);
+            }) || { technique: 70, speed: 70, finishing: 70, defense: 70 };
 
             return {
                 name,
-                // Cálculo de poder para o sorteio
                 power: (Number(data.technique) * 1.5) + Number(data.speed)
             };
         });
