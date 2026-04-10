@@ -63,20 +63,20 @@ export function PlayerListManager({ groupId }: { groupId: string, isAdmin: boole
 
     useEffect(() => {
         const syncOfficialProfile = async () => {
-            // Bloqueia se não houver usuário ou se os dados ainda estiverem carregando
             if (!user || !user.nomeLista || loading || playersMetadata.length === 0) return;
 
             const officialId = user.uid;
-            const nomeParaMatch = user.nomeLista.toLowerCase().trim();
+            const meuNome = user.nomeLista.toLowerCase().trim();
 
-            // 1. Verifica se já existe o perfil oficial
             const hasOfficial = playersMetadata.some(p => p.id === officialId);
 
-            // 2. Procura o "Ghost" (ex: marra)
             const ghostProfile = playersMetadata.find(p => {
                 if (p.id === officialId) return false;
-                const nomeNaLista = (p.nomeLista || "").toLowerCase().trim();
-                return nomeNaLista === nomeParaMatch || p.id.toLowerCase() === nomeParaMatch;
+
+                const nomeDoc = (p.nomeLista || "").toLowerCase().trim();
+                const idDoc = p.id.toLowerCase().trim();
+
+                return idDoc === meuNome || nomeDoc === meuNome || nomeDoc.includes(meuNome);
             });
 
             if (ghostProfile) {
@@ -84,7 +84,6 @@ export function PlayerListManager({ groupId }: { groupId: string, isAdmin: boole
                     const officialRef = doc(db, "groups", groupId, "players_meta", officialId);
                     const ghostRef = doc(db, "groups", groupId, "players_meta", ghostProfile.id);
 
-                    // Se eu NÃO tenho perfil oficial, eu migro os dados do ghost
                     if (!hasOfficial) {
                         await setDoc(officialRef, {
                             ...ghostProfile,
@@ -95,9 +94,7 @@ export function PlayerListManager({ groupId }: { groupId: string, isAdmin: boole
                         });
                     }
 
-                    // DELETA O GHOST (marra) definitivamente
                     await deleteDoc(ghostRef);
-
                     toast({ title: "PERFIL SINCRONIZADO", description: "Sua conta oficial foi vinculada ao seu histórico." });
                 } catch (e) {
                     console.error("Erro no Sync:", e);

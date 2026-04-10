@@ -53,22 +53,18 @@ export const MatchLogic = {
             let calculatedMvp = "";
             const preMatchStats: any[] = [];
 
-            // 3. Processar cada jogador da lista de confirmados
             for (const playerName of players) {
                 const nameLower = playerName.toLowerCase().trim();
-                console.log("nameLower:", nameLower);
-                // Busca robusta para evitar duplicidade (ID longo vs nome curto)
+
                 const foundMeta = existingMetas.find(m => {
                     const metaNomeLista = (m.nomeLista || "").toLowerCase().trim();
                     const metaId = m.id.toLowerCase().trim();
 
                     return metaNomeLista === nameLower ||
                         metaId === nameLower ||
-                        (nameLower.length > 3 && metaNomeLista.includes(nameLower)) ||
-                        (metaNomeLista.length > 3 && nameLower.includes(metaNomeLista));
+                        metaNomeLista.includes(nameLower) ||
+                        nameLower.includes(metaNomeLista);
                 });
-
-
 
                 const targetDocId = foundMeta ? foundMeta.id : nameLower;
 

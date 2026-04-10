@@ -5,29 +5,36 @@ export const DrawService = {
     async calculateTeams(groupId: string, confirmedNames: string[]) {
         const q = query(collection(db, "groups", groupId, "players_meta"));
         const snap = await getDocs(q);
-        const metaData: any = {};
 
-        snap.docs.forEach(d => {
-            metaData[d.id.toLowerCase()] = d.data();
-        });
+        // Mapeamos os dados brutos
+        const metaData: any[] = snap.docs.map(d => ({
+            id: d.id,
+            ...d.data()
+        }));
 
         const players = confirmedNames.map(name => {
             const searchName = name.toLowerCase().trim();
 
-            const dataKey = Object.keys(metaData).find(key => {
-                const p = metaData[key];
-                const nomeNoMeta = (p.nomeLista || "").toLowerCase().trim();
-                return key === searchName || nomeNoMeta === searchName;
-            });
+            // BUSCA AVANÇADA:
+            // Procura nos documentos se o ID bate OU se o campo nomeLista bate
+            const data = metaData.find(m => {
+                const metaNomeLista = (m.nomeLista || "").toLowerCase().trim();
+                const metaId = m.id.toLowerCase().trim();
 
-            const data = dataKey ? metaData[dataKey] : { technique: 70, speed: 70, finishing: 70, defense: 70 };
+                return metaId === searchName ||
+                    metaNomeLista === searchName ||
+                    metaNomeLista.includes(searchName) ||
+                    searchName.includes(metaNomeLista);
+            }) || { technique: 70, speed: 70, finishing: 70, defense: 70 }; // Fallback para 70
 
             return {
                 name,
+                // Cálculo de poder para o sorteio
                 power: (Number(data.technique) * 1.5) + Number(data.speed)
             };
         });
 
+        // Ordenação por nível técnico
         const sortedPlayers = [...players].sort((a, b) => b.power - a.power);
 
         const teams: { teamA: any[], teamB: any[], teamC: any[] } = {
@@ -44,6 +51,7 @@ export const DrawService = {
             return array;
         };
 
+        // Distribuição equilibrada (Snake Draft adaptado com Shuffle por potes)
         for (let i = 0; i < sortedPlayers.length; i += 3) {
             const trio = sortedPlayers.slice(i, i + 3);
             const shuffledTrio = shuffle([...trio]);
