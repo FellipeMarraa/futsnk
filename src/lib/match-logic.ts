@@ -26,10 +26,9 @@ export const MatchLogic = {
 
             const statsAccumulator: Record<string, any> = {};
 
-            let bestRoundPerformance = -1;
-            let calculatedMvpName = "";
+            // --- 1. ACUMULAR VOTOS E CALCULAR MÉDIA GLOBAL DA RODADA ---
+            let totalTech = 0, totalSpeed = 0, totalFin = 0, totalDef = 0, totalVotedEntries = 0;
 
-            // 1. Acumular votos técnicos
             ratingsSnap.forEach(docSnap => {
                 const data = docSnap.data();
                 const playerRatings = data.ratings;
@@ -40,14 +39,26 @@ export const MatchLogic = {
                         statsAccumulator[playerName] = { technique: [], speed: [], finishing: [], defense: [] };
                     }
                     const p = playerRatings[playerName];
-                    if (p.technique) statsAccumulator[playerName].technique.push(p.technique);
-                    if (p.speed) statsAccumulator[playerName].speed.push(p.speed);
-                    if (p.finishing) statsAccumulator[playerName].finishing.push(p.finishing);
-                    if (p.defense) statsAccumulator[playerName].defense.push(p.defense);
+
+                    statsAccumulator[playerName].technique.push(p.technique);
+                    statsAccumulator[playerName].speed.push(p.speed);
+                    statsAccumulator[playerName].finishing.push(p.finishing);
+                    statsAccumulator[playerName].defense.push(p.defense);
+
+                    totalTech += p.technique;
+                    totalSpeed += p.speed;
+                    totalFin += p.finishing;
+                    totalDef += p.defense;
+                    totalVotedEntries++;
                 });
             });
 
-            const preMatchStats: any[] = [];
+            const globalRoundAverage = totalVotedEntries > 0 ? {
+                technique: (totalTech / totalVotedEntries) * 20,
+                speed: (totalSpeed / totalVotedEntries) * 20,
+                finishing: (totalFin / totalVotedEntries) * 20,
+                defense: (totalDef / totalVotedEntries) * 20
+            } : { technique: 75, speed: 75, finishing: 75, defense: 75 };
 
             const metaQuerySnap = await getDocs(collection(db, "groups", groupId, "players_meta"));
             const existingMetas = metaQuerySnap.docs.map(d => ({
@@ -55,7 +66,11 @@ export const MatchLogic = {
                 ...d.data()
             })) as PlayerMeta[];
 
-            // 2. Loop sobre TODOS os jogadores da lista
+            let bestRoundPerformance = -1;
+            let calculatedMvpName = "";
+            const preMatchStats: any[] = [];
+
+            // --- 2. LOOP DE PROCESSAMENTO POR JOGADOR ---
             for (const playerName of players) {
                 const nameLower = playerName.toLowerCase().trim();
 
@@ -68,7 +83,6 @@ export const MatchLogic = {
                 const metaRef = doc(db, "groups", groupId, "players_meta", targetDocId);
                 const metaDoc = await getDoc(metaRef);
 
-                // PADRÃO DE INÍCIO: 70
                 let currentStats = { technique: 70, speed: 70, finishing: 70, defense: 70 };
 
                 if (metaDoc.exists()) {
@@ -87,47 +101,47 @@ export const MatchLogic = {
                 });
 
                 const acc = statsAccumulator[playerName];
-                let finalTech, finalSpeed, finalFin, finalDef;
+                let roundTech, roundSpeed, roundFin, roundDef;
 
                 if (acc && acc.technique.length > 0) {
                     const count = acc.technique.length;
-
-                    const roundTech = (acc.technique.reduce((a: any, b: any) => a + b, 0) / count) * 20;
-                    const roundSpeed = (acc.speed.reduce((a: any, b: any) => a + b, 0) / count) * 20;
-                    const roundFin = (acc.finishing.reduce((a: any, b: any) => a + b, 0) / count) * 20;
-                    const roundDef = (acc.defense.reduce((a: any, b: any) => a + b, 0) / count) * 20;
+                    roundTech = (acc.technique.reduce((a: any, b: any) => a + b, 0) / count) * 20;
+                    roundSpeed = (acc.speed.reduce((a: any, b: any) => a + b, 0) / count) * 20;
+                    roundFin = (acc.finishing.reduce((a: any, b: any) => a + b, 0) / count) * 20;
+                    roundDef = (acc.defense.reduce((a: any, b: any) => a + b, 0) / count) * 20;
 
                     const currentPerformance = (roundTech * 0.4) + (roundFin * 0.3) + (roundSpeed * 0.15) + (roundDef * 0.15);
-
                     if (currentPerformance > bestRoundPerformance) {
                         bestRoundPerformance = currentPerformance;
                         calculatedMvpName = existingMeta?.nomeLista || playerName;
                     }
-
-                    /**
-                     * LÓGICA DE EVOLUÇÃO PONDERADA:
-                     * Usamos um peso de 97% para o histórico e apenas 3% para a rodada atual.
-                     * Isso evita saltos discrepantes e valoriza a constância.
-                     * Trava de segurança: Math.max(70, ...) garante que ninguém fique abaixo do inicial.
-                     */
-                    const weightHistory = 0.95;
-                    const weightRound = 0.05;
-
-                    finalTech = Math.max(70, (currentStats.technique * weightHistory) + (roundTech * weightRound));
-                    finalSpeed = Math.max(70, (currentStats.speed * weightHistory) + (roundSpeed * weightRound));
-                    finalFin = Math.max(70, (currentStats.finishing * weightHistory) + (roundFin * weightRound));
-                    finalDef = Math.max(70, (currentStats.defense * weightHistory) + (roundDef * weightRound));
                 } else {
-                    // Se não jogou ou não foi votado, apenas garante que não esteja abaixo de 70
-                    finalTech = Math.max(70, currentStats.technique);
-                    finalSpeed = Math.max(70, currentStats.speed);
-                    finalFin = Math.max(70, currentStats.finishing);
-                    finalDef = Math.max(70, currentStats.defense);
+                    roundTech = globalRoundAverage.technique * 0.9;
+                    roundSpeed = globalRoundAverage.speed * 0.9;
+                    roundFin = globalRoundAverage.finishing * 0.9;
+                    roundDef = globalRoundAverage.defense * 0.9;
                 }
+
+                /**
+                 * LÓGICA DE EVOLUÇÃO ASSIMÉTRICA:
+                 * Subir é fácil (10% de impacto), descer é difícil (apenas 2% de impacto).
+                 * Isso valoriza o bom desempenho e protege o histórico de um jogo ruim.
+                 */
+                const calculateAsymmetricStat = (current: number, round: number) => {
+                    const isImprovement = round > current;
+                    const weight = isImprovement ? 0.10 : 0.02; // 10% para subir, 2% para descer
+                    const newValue = (current * (1 - weight)) + (round * weight);
+                    return Math.max(70, newValue); // Piso de 70 garantido
+                };
+
+                const finalTech = calculateAsymmetricStat(currentStats.technique, roundTech);
+                const finalSpeed = calculateAsymmetricStat(currentStats.speed, roundSpeed);
+                const finalFin = calculateAsymmetricStat(currentStats.finishing, roundFin);
+                const finalDef = calculateAsymmetricStat(currentStats.defense, roundDef);
 
                 await setDoc(metaRef, {
                     nomeLista: existingMeta?.nomeLista || playerName,
-                    technique: finalTech, // Removido o Math.round aqui para manter decimais internamente e a subida ser gradual
+                    technique: finalTech,
                     speed: finalSpeed,
                     finishing: finalFin,
                     defense: finalDef,
