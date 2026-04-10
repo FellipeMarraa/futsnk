@@ -23,7 +23,17 @@ import {Card} from "@/components/ui/card"
 import {Textarea} from "@/components/ui/textarea"
 import {useToast} from "@/hooks/use-toast"
 import {db} from "@/lib/firebase"
-import {collection, deleteDoc, doc, onSnapshot, query, setDoc, updateDoc, getDoc} from "firebase/firestore"
+import {
+    collection,
+    deleteDoc,
+    doc,
+    onSnapshot,
+    query,
+    setDoc,
+    updateDoc,
+    getDoc,
+    serverTimestamp
+} from "firebase/firestore"
 import {useAuth} from "@/contexts/auth-context"
 import {MatchLogic} from "@/lib/match-logic"
 import {format, isValid, parseISO} from "date-fns"
@@ -213,24 +223,35 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
             const matchData = latestMatchSnap.data();
 
             if (matchData?.status === "finished" && Array.isArray(matchData.preMatchStats)) {
-                for (const stat of matchData.preMatchStats) {
-                    if (!stat.playerId || !stat.oldStats) continue;
+
+                const rollbackPromises = matchData.preMatchStats.map(async (stat: any) => {
+                    if (!stat.playerId || !stat.oldStats) return;
+
                     const playerMetaRef = doc(db, "groups", groupId, "players_meta", stat.playerId);
-                    await setDoc(playerMetaRef, {
-                        technique: Number(stat.oldStats.technique) || 50,
-                        speed: Number(stat.oldStats.speed) || 50,
-                        finishing: Number(stat.oldStats.finishing) || 50,
-                        defense: Number(stat.oldStats.defense) || 50,
-                        nomeLista: stat.playerId.charAt(0).toUpperCase() + stat.playerId.slice(1)
+
+                    return setDoc(playerMetaRef, {
+                        technique: Number(stat.oldStats.technique),
+                        speed: Number(stat.oldStats.speed),
+                        finishing: Number(stat.oldStats.finishing),
+                        defense: Number(stat.oldStats.defense),
+                        lastUpdated: serverTimestamp()
                     }, { merge: true });
-                }
+                });
+
+                await Promise.all(rollbackPromises);
             }
 
             await deleteDoc(latestMatchRef);
-            toast({ title: "RODADA EXCLUÍDA" });
+
+            toast({
+                title: "RODADA EXCLUÍDA",
+                description: "Os níveis dos atletas voltaram ao estado anterior."
+            });
+
             onBack();
         } catch (e) {
-            toast({ variant: "destructive", title: "ERRO AO EXCLUIR" });
+            console.error("Erro no Rollback:", e);
+            toast({ variant: "destructive", title: "ERRO AO EXCLUIR", description: "Não foi possível restaurar os níveis." });
         } finally {
             setIsProcessing(false);
             setIsDeleteDialogOpen(false);
