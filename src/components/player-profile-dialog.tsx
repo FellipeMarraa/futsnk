@@ -109,12 +109,16 @@ export function PlayerProfileDialog({ isOpen, onClose, user, initialGroupId, all
     }, [isOpen, user, activeGroupId]);
 
     const calculateOVR = (s: any) => {
-        if (!s) return 70;
+        if (!s) return "70.0";
         const t = Number(s.technique) || 70;
         const f = Number(s.finishing) || 70;
         const v = Number(s.speed) || 70;
         const d = Number(s.defense) || 70;
-        return Math.round((t * 0.35) + (f * 0.35) + (v * 0.15) + (d * 0.15));
+
+        const ovr = (t * 0.35) + (f * 0.35) + (v * 0.15) + (d * 0.15);
+
+        // Retorna com 1 casa decimal
+        return ovr.toFixed(1);
     }
 
     return (

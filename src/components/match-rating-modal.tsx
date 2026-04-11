@@ -1,5 +1,5 @@
 import {useEffect, useState} from "react"
-import {CheckCircle2, Shield, Star, Target, TrendingUp, Trophy, X, Zap, Users} from "lucide-react"
+import {CheckCircle2, Lock, Shield, Star, Target, TrendingUp, Trophy, X, Zap} from "lucide-react"
 import {Button} from "@/components/ui/button"
 import {Card} from "@/components/ui/card"
 import {Dialog, DialogContent, DialogDescription, DialogTitle,} from "@/components/ui/dialog"
@@ -47,8 +47,6 @@ export function MatchRatingModal({ isOpen, onClose, match, currentUser, nomeList
         const myNameProfile = nomeLista.toString().trim().toLowerCase()
         const teamKeys = ['teamA', 'teamB', 'teamC']
 
-        // LÓGICA DE MATCH INTELIGENTE (CONTAINS)
-        // Procura o time onde um dos nomes "contém" ou "é contido por" o seu nomeLista
         const myTeamKey = teamKeys.find(key =>
             match.teams[key]?.some((p: any) => {
                 const pNameList = (p?.name || p || "").toString().trim().toLowerCase()
@@ -60,7 +58,6 @@ export function MatchRatingModal({ isOpen, onClose, match, currentUser, nomeList
 
         if (!myTeamKey) return []
 
-        // Retorna os colegas, usando a mesma lógica de exclusão para não mostrar você mesmo
         return (match.teams[myTeamKey] || []).filter((p: any) => {
             const pNameList = (p?.name || p || "").toString().trim().toLowerCase()
             const isMe = pNameList === myNameProfile ||
@@ -71,6 +68,24 @@ export function MatchRatingModal({ isOpen, onClose, match, currentUser, nomeList
     }
 
     const teammates = getMyTeammates()
+
+    // NOVA TRAVA: Verifica se o usuário de fato participou da rodada
+    const isParticipant = () => {
+        if (!match.teams || !nomeLista) return false;
+        const myNameProfile = nomeLista.toString().trim().toLowerCase();
+        const teamKeys = ['teamA', 'teamB', 'teamC'];
+
+        return teamKeys.some(key =>
+            match.teams[key]?.some((p: any) => {
+                const pNameList = (p?.name || p || "").toString().trim().toLowerCase();
+                return pNameList === myNameProfile ||
+                    myNameProfile.includes(pNameList) ||
+                    pNameList.includes(myNameProfile);
+            })
+        );
+    };
+
+    const userIsParticipant = isParticipant();
 
     const handleStarClick = (playerName: string, attr: string, value: number) => {
         if (hasVoted) return
@@ -90,7 +105,7 @@ export function MatchRatingModal({ isOpen, onClose, match, currentUser, nomeList
     }
 
     const submitVotes = async () => {
-        if (hasVoted) return;
+        if (hasVoted || !userIsParticipant) return;
 
         try {
             const voteRef = doc(db, "groups", groupId, "matches", match.id, "technical_ratings", currentUser.uid)
@@ -139,7 +154,7 @@ export function MatchRatingModal({ isOpen, onClose, match, currentUser, nomeList
                     <div>
                         <DialogTitle className="text-xl font-black italic uppercase text-primary tracking-tighter">Avaliação Técnica</DialogTitle>
                         <DialogDescription className="text-[9px] font-bold text-white/40 uppercase tracking-widest mt-1">
-                            {hasVoted ? "CONCLUÍDO" : (step === 1 ? "PASSO 1: SEU TIME" : "PASSO 2: DESTAQUES ADVERSÁRIOS")}
+                            {hasVoted ? "CONCLUÍDO" : !userIsParticipant ? "ACESSO NEGADO" : (step === 1 ? "PASSO 1: SEU TIME" : "PASSO 2: DESTAQUES ADVERSÁRIOS")}
                         </DialogDescription>
                     </div>
                     <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full hover:bg-white/5"><X className="text-white/40"/></Button>
@@ -154,26 +169,24 @@ export function MatchRatingModal({ isOpen, onClose, match, currentUser, nomeList
                             <h3 className="text-white font-black italic uppercase text-lg">Votos Registrados!</h3>
                             <Button onClick={onClose} className="mt-8 bg-white/5 text-white font-black uppercase italic text-[10px] h-11 px-8 rounded-xl">Fechar</Button>
                         </div>
+                    ) : !userIsParticipant ? (
+                        <div className="flex-1 flex flex-col items-center justify-center text-center p-8 animate-in fade-in zoom-in duration-300">
+                            <div className="size-20 bg-red-500/10 rounded-full flex items-center justify-center mb-6">
+                                <Lock className="size-10 text-red-500" />
+                            </div>
+                            <h3 className="text-white font-black italic uppercase text-lg leading-tight">Votação Restrita</h3>
+                            <p className="text-white/40 text-[10px] font-bold uppercase tracking-widest leading-relaxed mt-4 max-w-[240px]">
+                                Apenas atletas que participaram desta rodada podem realizar avaliações técnicas.
+                            </p>
+                            <Button onClick={onClose} className="mt-8 bg-white/5 text-white font-black uppercase italic text-[10px] h-11 px-8 rounded-xl border border-white/5">Voltar ao Clube</Button>
+                        </div>
                     ) : (
                         <>
                             {step === 1 ? (
                                 <div className="space-y-2 pb-8">
                                     {teammates.length > 0 ? (
                                         teammates.map((p: any, i: number) => <PlayerRatingCard key={i} p={p} />)
-                                    ) : (
-                                        <div className="py-20 text-center px-6 animate-in fade-in duration-500">
-                                            <Users className="size-12 text-white/10 mx-auto mb-4" />
-                                            <p className="text-white/40 text-xs font-bold uppercase tracking-widest leading-relaxed">
-                                                Seu nome não foi identificado nos times sorteados.
-                                            </p>
-                                            <Button
-                                                onClick={() => setStep(2)}
-                                                className="mt-6 bg-primary/10 text-primary border border-primary/20 text-[10px] font-black uppercase italic rounded-xl h-10 px-6"
-                                            >
-                                                Avaliar outros atletas
-                                            </Button>
-                                        </div>
-                                    )}
+                                    ) : null}
                                 </div>
                             ) : (
                                 <div className="space-y-6 pb-8">
@@ -185,7 +198,6 @@ export function MatchRatingModal({ isOpen, onClose, match, currentUser, nomeList
                                         {match.confirmedPlayers?.filter((n:string) => {
                                             const nameInList = n.toString().trim().toLowerCase();
                                             const myNameProfile = nomeLista.toString().trim().toLowerCase();
-                                            // Filtra para não aparecer você mesmo na lista de "Outros"
                                             return nameInList !== myNameProfile &&
                                                 !myNameProfile.includes(nameInList) &&
                                                 !nameInList.includes(myNameProfile);
@@ -215,7 +227,6 @@ export function MatchRatingModal({ isOpen, onClose, match, currentUser, nomeList
                                             )
                                         })}
                                     </div>
-
                                     <p className="text-[9px] text-white/20 font-bold uppercase text-center mt-4 tracking-tighter px-10">
                                         As médias das notas definem o MVP automático da rodada.
                                     </p>
@@ -225,7 +236,7 @@ export function MatchRatingModal({ isOpen, onClose, match, currentUser, nomeList
                     )}
                 </div>
 
-                {!hasVoted && !checkingVote && (
+                {!hasVoted && !checkingVote && userIsParticipant && (
                     <div className="p-6 bg-zinc-900/50 border-t border-white/5 flex gap-3 shrink-0">
                         {step === 2 && <Button onClick={() => setStep(1)} className="bg-white/5 text-white font-black uppercase text-[10px] h-12 rounded-xl px-6">Voltar</Button>}
                         {step === 1 ? (
@@ -234,7 +245,7 @@ export function MatchRatingModal({ isOpen, onClose, match, currentUser, nomeList
                                 onClick={() => setStep(2)}
                                 className="flex-1 bg-primary text-black font-black uppercase text-xs h-12 rounded-xl"
                             >
-                                {teammates.length > 0 ? "Avaliar Adversários" : "Ir para Passo 2"}
+                                Avaliar Adversários
                             </Button>
                         ) : (
                             <Button onClick={submitVotes} className="flex-1 bg-emerald-600 text-white font-black uppercase text-xs h-12 rounded-xl">Finalizar Votação</Button>

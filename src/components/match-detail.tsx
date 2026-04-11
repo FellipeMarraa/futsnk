@@ -2,21 +2,21 @@ import {useEffect, useState} from "react"
 import {
     ArrowLeft,
     Calendar,
+    Check,
+    CheckCircle2,
     ChevronLeft,
     ChevronRight,
     Copy,
     Loader2,
+    Medal,
     MoreVertical,
     Pencil,
+    PlayCircle,
+    RefreshCw,
     Star,
     Trash2,
-    Trophy,
     UserMinus,
-    Users,
-    Zap,
-    PlayCircle,
-    CheckCircle2,
-    Medal
+    Users
 } from "lucide-react"
 import {Button} from "@/components/ui/button"
 import {Card} from "@/components/ui/card"
@@ -27,18 +27,24 @@ import {
     collection,
     deleteDoc,
     doc,
+    getDoc,
     onSnapshot,
     query,
+    serverTimestamp,
     setDoc,
-    updateDoc,
-    getDoc,
-    serverTimestamp
+    updateDoc
 } from "firebase/firestore"
 import {useAuth} from "@/contexts/auth-context"
 import {MatchLogic} from "@/lib/match-logic"
 import {format, isValid, parseISO} from "date-fns"
 import {ptBR} from "date-fns/locale"
-import {DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator} from "@/components/ui/dropdown-menu"
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu"
 import {
     AlertDialog,
     AlertDialogAction,
@@ -52,7 +58,7 @@ import {
 import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar"
 import {Badge} from "@/components/ui/badge"
 import {Input} from "@/components/ui/input"
-import { MatchRatingModal } from "@/components/match-rating-modal"
+import {MatchRatingModal} from "@/components/match-rating-modal"
 
 interface MatchDetailProps {
     groupId: string
@@ -67,7 +73,7 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
 
     const [match, setMatch] = useState(initialMatch)
     const [rawList, setRawList] = useState("")
-    const [technicalRatings, setTechnicalRatings] = useState<any[]>([])
+    const [, setTechnicalRatings] = useState<any[]>([])
     const [playersMeta, setPlayersMeta] = useState<Record<string, any>>({})
     const [isProcessing, setIsProcessing] = useState(false)
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
@@ -76,10 +82,20 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
     const [activeTeamTab, setActiveTeamTab] = useState(0)
     const [isRatingModalOpen, setIsRatingModalOpen] = useState(false)
 
+    // Estado para controlar quem já chegou para o sorteio
+    const [selectedForDraw, setSelectedForDraw] = useState<string[]>([]);
+
     useEffect(() => {
         const matchRef = doc(db, "groups", groupId, "matches", initialMatch.id);
         const unsubMatch = onSnapshot(matchRef, (doc) => {
-            if (doc.exists()) setMatch({ id: doc.id, ...doc.data() });
+            if (doc.exists()) {
+                const data = doc.data();
+                setMatch({ id: doc.id, ...data });
+                // Se ainda não houver seleção, inicializa com todos os confirmados
+                if (selectedForDraw.length === 0 && data.confirmedPlayers) {
+                    setSelectedForDraw(data.confirmedPlayers);
+                }
+            }
         });
 
         const qRatings = collection(db, "groups", groupId, "matches", initialMatch.id, "technical_ratings");
@@ -92,14 +108,10 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
             const metaMap: Record<string, any> = {};
             snap.forEach(docSnap => {
                 const data = docSnap.data();
-                const docId = docSnap.id; // UID ou Nome
+                const docId = docSnap.id;
                 const nomeLista = (data.nomeLista || "").toLowerCase().trim();
-
                 metaMap[docId.toLowerCase()] = data;
-
-                if (nomeLista) {
-                    metaMap[nomeLista] = data;
-                }
+                if (nomeLista) metaMap[nomeLista] = data;
             });
             setPlayersMeta(metaMap);
         });
@@ -107,8 +119,11 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
         return () => { unsubMatch(); unsubRatings(); unsubMeta(); };
     }, [initialMatch.id, groupId]);
 
-    // LÓGICA ATUALIZADA: O MVP agora vem direto do documento da partida (calculado pelo MatchLogic)
-    const matchMVPName = match.mvp || null;
+    const togglePlayerSelection = (name: string) => {
+        setSelectedForDraw(prev =>
+            prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name]
+        );
+    };
 
     const getSafeDateLabel = () => {
         if (!match.date) return "DATA NÃO DEFINIDA";
@@ -193,19 +208,27 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
     }
 
     const handleDraw = async () => {
-        if (!match.confirmedPlayers || match.confirmedPlayers.length < 2) return;
+        if (selectedForDraw.length < 2) {
+            toast({ variant: "destructive", title: "POUCOS ATLETAS", description: "Marque quem já chegou para o sorteio." });
+            return;
+        }
         setIsProcessing(true)
         try {
             const { DrawService } = await import("@/lib/draw.service.ts");
-            const result = await DrawService.calculateTeams(groupId, match.confirmedPlayers)
+
+            const presentPlayers = selectedForDraw;
+            const absentPlayers = (match.confirmedPlayers || []).filter((n: string) => !selectedForDraw.includes(n));
+
+            // Chamada atualizada para o serviço que separa presentes de ausentes
+            const result = await DrawService.calculateTeams(groupId, presentPlayers, absentPlayers)
 
             await updateDoc(doc(db, "groups", groupId, "matches", match.id), {
                 teams: result,
-                status: "drawn", // Ajuste automático aqui
+                status: "drawn",
                 updatedAt: new Date()
             })
 
-            toast({ title: "SORTEIO CONCLUÍDO", description: "Times definidos e status atualizado." })
+            toast({ title: "SORTEIO REALIZADO", description: "Times equilibrados com quem está presente." })
         } catch (e) {
             toast({ variant: "destructive", title: "ERRO NO SORTEIO" })
         } finally {
@@ -235,14 +258,10 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
             const latestMatchRef = doc(db, "groups", groupId, "matches", match.id);
             const latestMatchSnap = await getDoc(latestMatchRef);
             const matchData = latestMatchSnap.data();
-
             if (matchData?.status === "finished" && Array.isArray(matchData.preMatchStats)) {
-
                 const rollbackPromises = matchData.preMatchStats.map(async (stat: any) => {
                     if (!stat.playerId || !stat.oldStats) return;
-
                     const playerMetaRef = doc(db, "groups", groupId, "players_meta", stat.playerId);
-
                     return setDoc(playerMetaRef, {
                         technique: Number(stat.oldStats.technique),
                         speed: Number(stat.oldStats.speed),
@@ -251,21 +270,13 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
                         lastUpdated: serverTimestamp()
                     }, { merge: true });
                 });
-
                 await Promise.all(rollbackPromises);
             }
-
             await deleteDoc(latestMatchRef);
-
-            toast({
-                title: "RODADA EXCLUÍDA",
-                description: "Os níveis dos atletas voltaram ao estado anterior."
-            });
-
+            toast({ title: "RODADA EXCLUÍDA" });
             onBack();
         } catch (e) {
-            console.error("Erro no Rollback:", e);
-            toast({ variant: "destructive", title: "ERRO AO EXCLUIR", description: "Não foi possível restaurar os níveis." });
+            toast({ variant: "destructive", title: "ERRO AO EXCLUIR" });
         } finally {
             setIsProcessing(false);
             setIsDeleteDialogOpen(false);
@@ -275,50 +286,36 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
     const PlayerIcon = ({ player, className }: { player: any, className: string }) => {
         const playerName = player?.name || (typeof player === 'string' ? player : "---");
         const searchName = playerName.toLowerCase().trim();
-
         let meta = playersMeta[searchName];
-
         if (!meta) {
-            const fallbackKey = Object.keys(playersMeta).find(key =>
-                searchName.includes(key) || key.includes(searchName)
-            );
+            const fallbackKey = Object.keys(playersMeta).find(key => searchName.includes(key) || key.includes(searchName));
             if (fallbackKey) meta = playersMeta[fallbackKey];
         }
-
         const photo = meta?.photoURL || "";
-
         let displayOvr = 70;
-
         if (meta) {
             const t = Number(meta.technique) || 70;
             const c = Number(meta.finishing) || 70;
             const v = Number(meta.speed) || 70;
             const d = Number(meta.defense) || 70;
-
-            const ovrReal = (t * 0.35) + (c * 0.35) + (v * 0.15) + (d * 0.15);
-            displayOvr = Math.round(ovrReal);
+            displayOvr = Math.round((t * 0.35) + (c * 0.35) + (v * 0.15) + (d * 0.15));
         }
-
-        if (displayOvr > 99) displayOvr = 99;
-        if (displayOvr < 10) displayOvr = 70;
-
         return (
             <div className={`absolute flex flex-col items-center transition-all duration-700 animate-in zoom-in-50 ${className}`}>
                 <div className="relative">
                     <Avatar className="size-14 border-2 border-primary/40 shadow-[0_0_15px_rgba(234,255,0,0.2)] bg-zinc-900">
                         <AvatarImage src={photo} className="object-cover" />
-                        <AvatarFallback className="text-white font-black italic text-[10px] flex items-center justify-center bg-zinc-800">
+                        <AvatarFallback className="text-white font-black italic text-[10px] bg-zinc-800 flex items-center justify-center">
                             {playerName.substring(0, 1).toUpperCase()}
                         </AvatarFallback>
                     </Avatar>
-
-                    <div className="absolute -top-1 -right-1 bg-primary text-black text-[8px] font-black px-1.5 rounded-full ring-2 ring-emerald-950 min-w-5 h-5 flex items-center justify-center shadow-lg">
-                        {displayOvr}
+                    <div className="absolute -top-1 -right-1 bg-primary text-black text-[8px] font-black px-1.5 rounded-full ring-2 ring-emerald-950 min-w-5 h-5 flex items-center justify-center">
+                        {displayOvr > 99 ? 99 : displayOvr}
                     </div>
                 </div>
                 <span className="mt-1 bg-black/60 backdrop-blur-md px-2.5 py-0.5 rounded-full text-[9px] font-black text-white uppercase italic border border-white/10 max-w-[90px] truncate">
-                {playerName.split(' ')[0]}
-            </span>
+                    {playerName.split(' ')[0]}
+                </span>
             </div>
         );
     };
@@ -350,25 +347,15 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
                             <DropdownMenuContent align="end" className="bg-[#1a1a1e] border-white/10 text-white text-[10px] font-black uppercase italic">
                                 <DropdownMenuItem onClick={copyToClipboard}><Copy className="size-4 mr-2" /> WhatsApp</DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => setIsEditing(true)}><Calendar className="size-4 mr-2" /> Alterar Data</DropdownMenuItem>
-
                                 <DropdownMenuSeparator className="bg-white/5" />
-
                                 {match.status === 'drawn' && (
-                                    <DropdownMenuItem onClick={handleOpenVoting} className="text-primary">
-                                        <PlayCircle className="size-4 mr-2" /> Liberar Votação
-                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={handleOpenVoting} className="text-primary"><PlayCircle className="size-4 mr-2" /> Liberar Votação</DropdownMenuItem>
                                 )}
-
                                 {match.status === 'voting_open' && (
-                                    <DropdownMenuItem onClick={handleFinalizeMatch} className="text-emerald-400">
-                                        <CheckCircle2 className="size-4 mr-2" /> Encerrar Rodada
-                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={handleFinalizeMatch} className="text-emerald-400"><CheckCircle2 className="size-4 mr-2" /> Encerrar Rodada</DropdownMenuItem>
                                 )}
-
                                 <DropdownMenuSeparator className="bg-white/5" />
-
-                                <DropdownMenuItem onClick={() => setIsDeleteDialogOpen(true)} className="text-red-500">
-                                    <Trash2 className="size-4 mr-2" /> Excluir</DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => setIsDeleteDialogOpen(true)} className="text-red-500"><Trash2 className="size-4 mr-2" /> Excluir</DropdownMenuItem>
                             </DropdownMenuContent>
                         </DropdownMenu>
                     )}
@@ -390,6 +377,13 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
                                     </div>
                                     <Button variant="ghost" size="icon" onClick={() => setActiveTeamTab(prev => (prev < 2 ? prev + 1 : 0))} className="rounded-full bg-white/5 text-white"><ChevronRight/></Button>
                                 </div>
+                                {isAdmin && match.status !== "finished" && (
+                                    <div className="mb-4">
+                                        <Button onClick={handleDraw} disabled={isProcessing} variant="outline" className="bg-white/5 border-white/10 text-white/60 hover:text-white text-[9px] font-black uppercase italic h-8 rounded-lg">
+                                            <RefreshCw className={`size-3 mr-2 ${isProcessing ? 'animate-spin' : ''}`} /> Refazer Equilíbrio
+                                        </Button>
+                                    </div>
+                                )}
                                 <div className="relative aspect-[3/4] w-full max-w-[320px] mx-auto bg-emerald-950/40 rounded-[3rem] border-2 border-white/5 shadow-2xl overflow-hidden">
                                     <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]" />
                                     <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-16 border-b-2 border-white/10 rounded-b-full" />
@@ -411,20 +405,10 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
                                         })()}
                                     </div>
                                 </div>
-
                                 {match.status === 'voting_open' && (
-                                    <div className="w-full max-w-[320px] mt-6 animate-in slide-in-from-bottom-4 duration-500">
-                                        <Button
-                                            onClick={() => {
-                                                if(!user || !nomeLista) {
-                                                    toast({ variant: "destructive", title: "LOGIN NECESSÁRIO" })
-                                                    return
-                                                }
-                                                setIsRatingModalOpen(true)
-                                            }}
-                                            className="w-full bg-gradient-to-r from-primary to-emerald-500 text-black font-black italic uppercase text-xs h-14 rounded-2xl shadow-xl shadow-primary/10 hover:scale-[1.02] transition-transform"
-                                        >
-                                            <Star className="mr-2 size-5 fill-black" /> Avaliar Atletas do Jogo
+                                    <div className="w-full max-w-[320px] mt-6">
+                                        <Button onClick={() => setIsRatingModalOpen(true)} className="w-full bg-gradient-to-r from-primary to-emerald-500 text-black font-black italic uppercase text-xs h-14 rounded-2xl">
+                                            <Star className="mr-2 size-5 fill-black" /> Avaliar Atletas
                                         </Button>
                                     </div>
                                 )}
@@ -432,45 +416,31 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
                         ) : (
                             <div className="aspect-[3/4] flex flex-col items-center justify-center bg-white/[0.02] border-2 border-dashed border-white/5 rounded-[3rem] text-center p-8">
                                 {match.confirmedPlayers?.length > 0 ? (
-                                    <div className="space-y-4">
-                                        <div className="p-4 bg-primary/10 rounded-full w-fit mx-auto"><Users className="size-8 text-primary" /></div>
-                                        <div>
-                                            <h4 className="text-white font-black italic uppercase tracking-tighter">Vestiário Pronto</h4>
-                                            <p className="text-[10px] text-white/40 uppercase font-bold mt-1">{match.confirmedPlayers.length} atletas convocados</p>
-                                        </div>
-                                        {isAdmin && <Button onClick={handleDraw} className="bg-primary text-black font-black uppercase text-[10px] h-11 px-8 rounded-xl shadow-lg">Realizar Sorteio</Button>}
+                                    <div className="space-y-4 text-center">
+                                        <Users className="size-12 text-primary mx-auto opacity-20" />
+                                        <h4 className="text-white font-black italic uppercase tracking-tighter">Sorteio Pendente</h4>
+                                        <p className="text-[10px] text-white/40 uppercase font-bold">Marque na lista ao lado quem já chegou para equilibrar os times A e B.</p>
+                                        {isAdmin && <Button onClick={handleDraw} disabled={isProcessing} className="bg-primary text-black font-black uppercase text-[10px] h-11 px-8 rounded-xl shadow-lg">
+                                            {isProcessing ? <Loader2 className="animate-spin size-4" /> : "Sortear com Presentes"}
+                                        </Button>}
                                     </div>
                                 ) : (
-                                    <>
-                                        {isProcessing ? <Loader2 className="size-12 animate-spin text-primary opacity-20" /> : <Trophy className="size-12 text-white/5 mb-4" />}
-                                        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/20">Aguardando Convocação</p>
-                                    </>
+                                    <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/20">Aguardando Convocação</p>
                                 )}
                             </div>
                         )}
-
-                        {match.status === 'finished' && matchMVPName && (
-                            <div className="mt-8 animate-in fade-in zoom-in duration-700">
-                                <Card className="bg-gradient-to-b from-amber-400/20 to-transparent border-amber-400/30 rounded-[3rem] p-8 text-center relative overflow-hidden">
-                                    <div className="absolute top-0 left-1/2 -translate-x-1/2 opacity-10"><Trophy className="size-48 text-amber-400" /></div>
-                                    <Medal className="size-12 text-amber-400 mx-auto mb-4 drop-shadow-[0_0_10px_rgba(251,191,36,0.5)]" />
+                        {match.status === 'finished' && match.mvp && (
+                            <div className="mt-8">
+                                <Card className="bg-gradient-to-b from-amber-400/20 to-transparent border-amber-400/30 rounded-[3rem] p-8 text-center">
+                                    <Medal className="size-12 text-amber-400 mx-auto mb-4" />
                                     <h3 className="text-amber-400 font-black italic uppercase text-2xl tracking-tighter">Man of the Match</h3>
-                                    <p className="text-white/40 text-[10px] font-bold uppercase tracking-[0.3em] mb-6">Melhor em Campo (Por Médias)</p>
-
-                                    <div className="relative inline-block mb-4">
-                                        <Avatar className="size-24 border-4 border-amber-400 shadow-[0_0_30px_rgba(251,191,36,0.3)]">
-                                            <AvatarImage src={playersMeta[matchMVPName.toLowerCase().trim()]?.photoURL} className="object-cover" />
-                                            <AvatarFallback className="bg-zinc-900 text-3xl font-black italic">{matchMVPName[0]}</AvatarFallback>
+                                    <div className="relative inline-block my-6">
+                                        <Avatar className="size-24 border-4 border-amber-400">
+                                            <AvatarImage src={playersMeta[match.mvp.toLowerCase()]?.photoURL} className="object-cover" />
+                                            <AvatarFallback className="bg-zinc-900 text-3xl font-black italic">{match.mvp[0]}</AvatarFallback>
                                         </Avatar>
-                                        <div className="absolute -bottom-2 -right-2 bg-amber-400 text-black font-black italic px-3 py-1 rounded-lg text-xs shadow-lg">
-                                            MVP
-                                        </div>
                                     </div>
-
-                                    <h4 className="text-white font-black italic uppercase text-xl tracking-tight mb-1">{matchMVPName}</h4>
-                                    <Badge className="bg-amber-400 w-full text-black font-black border-none px-4 py-1 rounded-full text-[10px]">
-                                        DESTAQUE DA RODADA
-                                    </Badge>
+                                    <h4 className="text-white font-black italic uppercase text-xl">{match.mvp}</h4>
                                 </Card>
                             </div>
                         )}
@@ -479,85 +449,56 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
                     <div className="lg:col-span-4 space-y-6">
                         {isAdmin && match.status === 'open' && (
                             <Card className="bg-[#1a1a1e] border-white/5 rounded-[2rem] p-6 shadow-2xl border-none">
-                                <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-primary mb-4 flex items-center gap-2"><Zap className="size-3" /> Dashboard Admin</h3>
-                                <Textarea placeholder="Cole a lista aqui..." className="bg-black/20 border-white/10 text-[11px] font-bold rounded-xl min-h-[150px] mb-4 text-white p-4 outline-none focus:ring-1 focus:ring-primary/50" value={rawList} onChange={(e) => setRawList(e.target.value)} />
-                                <div className="grid grid-cols-1 gap-3">
-                                    <Button onClick={processWhatsAppList} className="bg-white/5 text-white font-black text-[10px] uppercase h-11 rounded-xl border-none hover:bg-white/10 transition-colors">SINCRONIZAR</Button>
-                                </div>
+                                <Textarea placeholder="Cole a lista..." className="bg-black/20 border-white/10 text-[11px] font-bold rounded-xl min-h-[150px] mb-4 text-white" value={rawList} onChange={(e) => setRawList(e.target.value)} />
+                                <Button onClick={processWhatsAppList} disabled={isProcessing} className="w-full bg-white/5 text-white font-black text-[10px] uppercase h-11 rounded-xl">SINCRONIZAR</Button>
                             </Card>
                         )}
 
                         <Card className="bg-white/[0.03] border-white/5 rounded-[2rem] p-6 shadow-lg border-none">
-                            <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-white/40 mb-4 text-left">Resumo de Votos</h3>
-                            <div className="space-y-2">
-                                {technicalRatings.length > 0 ? (
-                                    <p className="text-[10px] text-primary font-black uppercase italic">{technicalRatings.length} atletas já avaliaram a rodada</p>
-                                ) : (
-                                    <p className="text-[10px] text-white/20 italic">Aguardando participações...</p>
-                                )}
+                            <div className="flex items-center justify-between mb-4 px-1">
+                                <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-white/40">Check-in Sorteio</h3>
+                                <Badge variant="outline" className="text-primary border-primary/20 text-[9px] font-black">{selectedForDraw.length}/{match.confirmedPlayers?.length || 0}</Badge>
                             </div>
-                        </Card>
-
-                        <Card className="bg-white/[0.03] border-white/5 rounded-[2rem] p-6 shadow-lg border-none">
-                            <div className="flex items-center justify-between mb-4">
-                                <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-white/40">Confirmados</h3>
-                                <Badge variant="outline" className="text-primary border-primary/20 text-[9px] font-black">{match.confirmedPlayers?.length || 0}</Badge>
-                            </div>
-                            <div className="grid grid-cols-1 gap-2 max-h-[350px] overflow-y-auto pr-2 custom-scrollbar">
-                                {match.confirmedPlayers?.map((name: string, i: number) => (
-                                    <div key={i} className="group flex items-center justify-between p-2.5 bg-white/5 rounded-xl border border-white/5 hover:border-primary/20 transition-all">
-                                        <div className="flex items-center gap-2 min-w-0">
-                                            <div className="size-1.5 rounded-full bg-primary shadow-[0_0_5px_#eaff00]" />
-                                            <span className="text-[10px] font-bold text-white/80 uppercase truncate text-left">{name}</span>
-                                        </div>
-                                        {isAdmin && (
-                                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <button onClick={() => editPlayerName(name)} className="p-1.5 text-white/30 hover:text-primary transition-colors"><Pencil className="size-3" /></button>
-                                                <button onClick={() => removePlayerFromMatch(name)} className="p-1.5 text-white/30 hover:text-red-500 transition-colors"><UserMinus className="size-3" /></button>
+                            <div className="grid grid-cols-1 gap-2 max-h-[450px] overflow-y-auto pr-2 custom-scrollbar">
+                                {match.confirmedPlayers?.map((name: string, i: number) => {
+                                    const isSelected = selectedForDraw.includes(name);
+                                    return (
+                                        <div key={i} className={`group flex items-center justify-between p-2.5 rounded-xl border transition-all ${isSelected ? 'bg-primary/10 border-primary/30' : 'bg-white/5 border-white/5'}`}>
+                                            <div className="flex items-center gap-3 min-w-0">
+                                                <button
+                                                    onClick={() => isAdmin && togglePlayerSelection(name)}
+                                                    className={`size-5 rounded-md flex items-center justify-center transition-all border ${isSelected ? 'bg-primary border-primary text-black' : 'bg-black/40 border-white/10 text-transparent'}`}
+                                                >
+                                                    <Check className="size-3.5 stroke-[4px]" />
+                                                </button>
+                                                <span className={`text-[10px] font-bold uppercase truncate ${isSelected ? 'text-white' : 'text-white/40'}`}>{name}</span>
                                             </div>
-                                        )}
-                                    </div>
-                                ))}
+                                            {isAdmin && (
+                                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <button onClick={() => editPlayerName(name)} className="p-1.5 text-white/30 hover:text-primary"><Pencil className="size-3" /></button>
+                                                    <button onClick={() => removePlayerFromMatch(name)} className="p-1.5 text-white/30 hover:text-red-500"><UserMinus className="size-3" /></button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </Card>
                     </div>
                 </div>
             </main>
 
-            {user && nomeLista && (
-                <MatchRatingModal
-                    isOpen={isRatingModalOpen}
-                    onClose={() => setIsRatingModalOpen(false)}
-                    match={match}
-                    currentUser={user}
-                    nomeLista={nomeLista}
-                    groupId={groupId}
-                />
-            )}
+            {user && nomeLista && <MatchRatingModal isOpen={isRatingModalOpen} onClose={() => setIsRatingModalOpen(false)} match={match} currentUser={user} nomeLista={nomeLista} groupId={groupId} />}
 
             <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-                <AlertDialogContent className="bg-zinc-950 border-white/10 rounded-[2.5rem] shadow-3xl outline-none">
+                <AlertDialogContent className="bg-zinc-950 border-white/10 rounded-[2.5rem] shadow-3xl">
                     <AlertDialogHeader>
-                        <AlertDialogTitle className="text-white uppercase font-black italic text-xl tracking-tighter">
-                            Excluir Rodada?
-                        </AlertDialogTitle>
-                        <AlertDialogDescription className="text-white/40 text-[10px] uppercase font-bold tracking-widest leading-relaxed">
-                            {match.status === "finished"
-                                ? "Esta rodada já foi finalizada. Ao excluir, as notas dos jogadores retornarão exatamente ao que eram antes desta votação. Esta ação é irreversível."
-                                : "Tem certeza que deseja remover esta rodada? Os dados de convocação serão perdidos."
-                            }
-                        </AlertDialogDescription>
+                        <AlertDialogTitle className="text-white uppercase font-black italic text-xl">Excluir Rodada?</AlertDialogTitle>
+                        <AlertDialogDescription className="text-white/40 text-[10px] uppercase font-bold tracking-widest leading-relaxed">Ação irreversível.</AlertDialogDescription>
                     </AlertDialogHeader>
-                    <AlertDialogFooter className="gap-3 mt-4 font-sans">
-                        <AlertDialogCancel className="bg-white/5 border-none text-white font-black uppercase text-[10px] italic h-12 rounded-xl">
-                            Cancelar
-                        </AlertDialogCancel>
-                        <AlertDialogAction
-                            onClick={handleDeleteMatch}
-                            className="bg-red-600 text-white font-black uppercase text-[10px] italic h-12 rounded-xl border-none hover:bg-red-700"
-                        >
-                            {isProcessing ? <Loader2 className="animate-spin size-4" /> : "Confirmar Exclusão"}
-                        </AlertDialogAction>
+                    <AlertDialogFooter className="gap-3 mt-4">
+                        <AlertDialogCancel className="bg-white/5 border-none text-white font-black uppercase text-[10px] italic h-12 rounded-xl">Cancelar</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleDeleteMatch} className="bg-red-600 text-white font-black uppercase text-[10px] italic h-12 rounded-xl border-none">Confirmar</AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
