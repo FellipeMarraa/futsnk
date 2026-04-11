@@ -1,5 +1,6 @@
 import {useEffect, useState} from "react"
 import {
+    AlertCircle,
     ArrowLeft,
     Calendar,
     Check,
@@ -8,7 +9,6 @@ import {
     ChevronRight,
     Copy,
     Loader2,
-    Medal,
     MoreVertical,
     Pencil,
     PlayCircle,
@@ -73,7 +73,7 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
 
     const [match, setMatch] = useState(initialMatch)
     const [rawList, setRawList] = useState("")
-    const [, setTechnicalRatings] = useState<any[]>([])
+    const [votedPlayerNames, setVotedPlayerNames] = useState<string[]>([])
     const [playersMeta, setPlayersMeta] = useState<Record<string, any>>({})
     const [isProcessing, setIsProcessing] = useState(false)
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
@@ -81,8 +81,6 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
     const [editDate, setEditDate] = useState(initialMatch.date || "")
     const [activeTeamTab, setActiveTeamTab] = useState(0)
     const [isRatingModalOpen, setIsRatingModalOpen] = useState(false)
-
-    // Estado para controlar quem já chegou para o sorteio
     const [selectedForDraw, setSelectedForDraw] = useState<string[]>([]);
 
     useEffect(() => {
@@ -91,16 +89,23 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
             if (doc.exists()) {
                 const data = doc.data();
                 setMatch({ id: doc.id, ...data });
-                // Se ainda não houver seleção, inicializa com todos os confirmados
                 if (selectedForDraw.length === 0 && data.confirmedPlayers) {
                     setSelectedForDraw(data.confirmedPlayers);
                 }
             }
         });
 
+        // Monitoramento em tempo real de quem já recebeu votos
         const qRatings = collection(db, "groups", groupId, "matches", initialMatch.id, "technical_ratings");
         const unsubRatings = onSnapshot(qRatings, (snap) => {
-            setTechnicalRatings(snap.docs.map(d => d.data()));
+            const names = new Set<string>();
+            snap.forEach(docSnap => {
+                const data = docSnap.data();
+                if (data.ratings) {
+                    Object.keys(data.ratings).forEach(name => names.add(name.toLowerCase().trim()));
+                }
+            });
+            setVotedPlayerNames(Array.from(names));
         });
 
         const qMeta = query(collection(db, "groups", groupId, "players_meta"));
@@ -118,6 +123,11 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
 
         return () => { unsubMatch(); unsubRatings(); unsubMeta(); };
     }, [initialMatch.id, groupId]);
+
+    // Lista de jogadores confirmados que ainda não receberam votos
+    const pendingPlayers = (match.confirmedPlayers || []).filter((name: string) =>
+        !votedPlayerNames.includes(name.toLowerCase().trim())
+    );
 
     const togglePlayerSelection = (name: string) => {
         setSelectedForDraw(prev =>
@@ -215,11 +225,8 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
         setIsProcessing(true)
         try {
             const { DrawService } = await import("@/lib/draw.service.ts");
-
             const presentPlayers = selectedForDraw;
             const absentPlayers = (match.confirmedPlayers || []).filter((n: string) => !selectedForDraw.includes(n));
-
-            // Chamada atualizada para o serviço que separa presentes de ausentes
             const result = await DrawService.calculateTeams(groupId, presentPlayers, absentPlayers)
 
             await updateDoc(doc(db, "groups", groupId, "matches", match.id), {
@@ -227,13 +234,9 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
                 status: "drawn",
                 updatedAt: new Date()
             })
-
-            toast({ title: "SORTEIO REALIZADO", description: "Times equilibrados com quem está presente." })
-        } catch (e) {
-            toast({ variant: "destructive", title: "ERRO NO SORTEIO" })
-        } finally {
-            setIsProcessing(false)
-        }
+            toast({ title: "SORTEIO REALIZADO" })
+        } catch (e) { toast({ variant: "destructive", title: "ERRO NO SORTEIO" }) }
+        finally { setIsProcessing(false) }
     }
 
     const handleOpenVoting = async () => {
@@ -275,12 +278,8 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
             await deleteDoc(latestMatchRef);
             toast({ title: "RODADA EXCLUÍDA" });
             onBack();
-        } catch (e) {
-            toast({ variant: "destructive", title: "ERRO AO EXCLUIR" });
-        } finally {
-            setIsProcessing(false);
-            setIsDeleteDialogOpen(false);
-        }
+        } catch (e) { toast({ variant: "destructive", title: "ERRO AO EXCLUIR" }); }
+        finally { setIsProcessing(false); setIsDeleteDialogOpen(false); }
     };
 
     const PlayerIcon = ({ player, className }: { player: any, className: string }) => {
@@ -429,24 +428,34 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
                                 )}
                             </div>
                         )}
-                        {match.status === 'finished' && match.mvp && (
-                            <div className="mt-8">
-                                <Card className="bg-gradient-to-b from-amber-400/20 to-transparent border-amber-400/30 rounded-[3rem] p-8 text-center">
-                                    <Medal className="size-12 text-amber-400 mx-auto mb-4" />
-                                    <h3 className="text-amber-400 font-black italic uppercase text-2xl tracking-tighter">Man of the Match</h3>
-                                    <div className="relative inline-block my-6">
-                                        <Avatar className="size-24 border-4 border-amber-400">
-                                            <AvatarImage src={playersMeta[match.mvp.toLowerCase()]?.photoURL} className="object-cover" />
-                                            <AvatarFallback className="bg-zinc-900 text-3xl font-black italic">{match.mvp[0]}</AvatarFallback>
-                                        </Avatar>
-                                    </div>
-                                    <h4 className="text-white font-black italic uppercase text-xl">{match.mvp}</h4>
-                                </Card>
-                            </div>
-                        )}
                     </div>
 
                     <div className="lg:col-span-4 space-y-6">
+                        {/* ALERTAS DE VOTAÇÃO (ADMIN) */}
+                        {isAdmin && match.status === 'voting_open' && (
+                            <>
+                                {pendingPlayers.length > 0 ? (
+                                    <Card className="bg-amber-500/10 border-amber-500/20 rounded-[2rem] p-6 animate-in fade-in slide-in-from-right-4 duration-500">
+                                        <div className="flex items-center gap-2 mb-4">
+                                            <AlertCircle className="size-4 text-amber-500" />
+                                            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-500">Atletas Sem Voto</h3>
+                                        </div>
+                                        <div className="flex flex-wrap gap-2">
+                                            {pendingPlayers.map((name: string) => (
+                                                <Badge key={name} variant="outline" className="bg-black/20 border-amber-500/30 text-white/60 text-[8px] font-bold uppercase italic px-3 py-1 rounded-full">{name}</Badge>
+                                            ))}
+                                        </div>
+                                    </Card>
+                                ) : (
+                                    <Card className="bg-emerald-500/10 border-emerald-500/20 rounded-[2rem] p-6 text-center border-dashed">
+                                        <CheckCircle2 className="size-6 text-emerald-500 mx-auto mb-2" />
+                                        <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500">Tudo Pronto!</h3>
+                                        <p className="text-[9px] text-white/40 font-bold uppercase mt-1">Todos já possuem ao menos 1 voto.</p>
+                                    </Card>
+                                )}
+                            </>
+                        )}
+
                         {isAdmin && match.status === 'open' && (
                             <Card className="bg-[#1a1a1e] border-white/5 rounded-[2rem] p-6 shadow-2xl border-none">
                                 <Textarea placeholder="Cole a lista..." className="bg-black/20 border-white/10 text-[11px] font-bold rounded-xl min-h-[150px] mb-4 text-white" value={rawList} onChange={(e) => setRawList(e.target.value)} />
@@ -465,10 +474,7 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
                                     return (
                                         <div key={i} className={`group flex items-center justify-between p-2.5 rounded-xl border transition-all ${isSelected ? 'bg-primary/10 border-primary/30' : 'bg-white/5 border-white/5'}`}>
                                             <div className="flex items-center gap-3 min-w-0">
-                                                <button
-                                                    onClick={() => isAdmin && togglePlayerSelection(name)}
-                                                    className={`size-5 rounded-md flex items-center justify-center transition-all border ${isSelected ? 'bg-primary border-primary text-black' : 'bg-black/40 border-white/10 text-transparent'}`}
-                                                >
+                                                <button onClick={() => isAdmin && togglePlayerSelection(name)} className={`size-5 rounded-md flex items-center justify-center transition-all border ${isSelected ? 'bg-primary border-primary text-black' : 'bg-black/40 border-white/10 text-transparent'}`}>
                                                     <Check className="size-3.5 stroke-[4px]" />
                                                 </button>
                                                 <span className={`text-[10px] font-bold uppercase truncate ${isSelected ? 'text-white' : 'text-white/40'}`}>{name}</span>
