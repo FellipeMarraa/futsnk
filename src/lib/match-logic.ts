@@ -1,13 +1,5 @@
 import { db } from "./firebase";
-import {
-    collection,
-    doc,
-    getDocs,
-    updateDoc,
-    getDoc,
-    setDoc,
-    serverTimestamp
-} from "firebase/firestore";
+import { collection, doc, getDocs, updateDoc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 
 interface PlayerMeta {
     id: string;
@@ -17,6 +9,7 @@ interface PlayerMeta {
     finishing?: number;
     defense?: number;
     userId?: string;
+    aliases?: string[];
 }
 
 export const MatchLogic = {
@@ -24,20 +17,15 @@ export const MatchLogic = {
         try {
             const matchRef = doc(db, "groups", groupId, "matches", matchId);
             const ratingsSnap = await getDocs(collection(db, "groups", groupId, "matches", matchId, "technical_ratings"));
-
             const statsAccumulator: Record<string, any> = {};
 
-            // 1. Acumular votos dos jogadores avaliados na rodada
             ratingsSnap.forEach(docSnap => {
                 const data = docSnap.data();
                 const playerRatings = data.ratings;
                 if (!playerRatings) return;
-
                 Object.keys(playerRatings).forEach(playerName => {
                     const pKey = playerName.toLowerCase().trim();
-                    if (!statsAccumulator[pKey]) {
-                        statsAccumulator[pKey] = { technique: [], speed: [], finishing: [], defense: [] };
-                    }
+                    if (!statsAccumulator[pKey]) statsAccumulator[pKey] = { technique: [], speed: [], finishing: [], defense: [] };
                     const p = playerRatings[playerName];
                     statsAccumulator[pKey].technique.push(p.technique);
                     statsAccumulator[pKey].speed.push(p.speed);
@@ -46,7 +34,6 @@ export const MatchLogic = {
                 });
             });
 
-            // 2. Buscar Metas existentes para vincular nomes ao UID correto
             const metaQuerySnap = await getDocs(collection(db, "groups", groupId, "players_meta"));
             const existingMetas = metaQuerySnap.docs.map(d => ({ id: d.id, ...d.data() })) as PlayerMeta[];
 
@@ -57,23 +44,14 @@ export const MatchLogic = {
             for (const playerName of players) {
                 const nameLower = playerName.toLowerCase().trim();
 
-                const potentialMetas = existingMetas.filter(m => {
-                    const metaNomeLista = (m.nomeLista || "").toLowerCase().trim();
-                    const metaId = m.id.toLowerCase().trim();
+                // BUSCA MESTRE: ID, Nome ou Alias
+                const foundMeta = existingMetas.find(m =>
+                    m.id.toLowerCase().trim() === nameLower ||
+                    (m.nomeLista || "").toLowerCase().trim() === nameLower ||
+                    (m.aliases || []).some(a => a.toLowerCase().trim() === nameLower)
+                );
 
-                    // O documento combina se o ID for o nome do zap OU se o campo nomeLista for o nome do zap
-                    // OU se o nome do zap estiver contido no nome oficial (ex: 'marra' em 'Fellipe Marra')
-                    return (
-                        metaId === nameLower ||
-                        metaNomeLista === nameLower ||
-                        (nameLower.length > 3 && metaNomeLista.includes(nameLower))
-                    );
-                });
-                const officialMeta = potentialMetas.find(m => m.userId && m.userId !== "");
-                const foundMeta = officialMeta || potentialMetas[0];
                 const targetDocId = foundMeta ? foundMeta.id : nameLower;
-
-                console.log(`Jogador: ${playerName} -> TargetID: ${targetDocId}`);
                 const metaRef = doc(db, "groups", groupId, "players_meta", targetDocId);
                 const metaDoc = await getDoc(metaRef);
 
@@ -89,38 +67,21 @@ export const MatchLogic = {
                 }
 
                 preMatchStats.push({ playerId: targetDocId, oldStats: { ...current } });
-
                 const acc = statsAccumulator[nameLower];
                 let round = { technique: 0, speed: 0, finishing: 0, defense: 0 };
 
                 if (acc && acc.technique.length > 0) {
                     const count = acc.technique.length;
-                    round.technique = (acc.technique.reduce((a: number, b: number) => a + b, 0) / count) * 20;
-                    round.speed = (acc.speed.reduce((a: number, b: number) => a + b, 0) / count) * 20;
-                    round.finishing = (acc.finishing.reduce((a: number, b: number) => a + b, 0) / count) * 20;
-                    round.defense = (acc.defense.reduce((a: number, b: number) => a + b, 0) / count) * 20;
+                    round.technique = (acc.technique.reduce((a: any, b: any) => a + b, 0) / count) * 20;
+                    round.speed = (acc.speed.reduce((a: any, b: any) => a + b, 0) / count) * 20;
+                    round.finishing = (acc.finishing.reduce((a: any, b: any) => a + b, 0) / count) * 20;
+                    round.defense = (acc.defense.reduce((a: any, b: any) => a + b, 0) / count) * 20;
 
-                    const currentPerf = (round.technique * 0.4) + (round.finishing * 0.3) + (round.speed * 0.15) + (round.defense * 0.15);
-                    if (currentPerf > bestRoundPerf) {
-                        bestRoundPerf = currentPerf;
-                        calculatedMvp = foundMeta?.nomeLista || playerName;
-                    }
-                } else {
-                    // Se não houve votos, a performance da rodada é igual à atual (sem mudança)
-                    round = { ...current };
-                }
+                    const perf = (round.technique * 0.4) + (round.finishing * 0.3) + (round.speed * 0.15) + (round.defense * 0.15);
+                    if (perf > bestRoundPerf) { bestRoundPerf = perf; calculatedMvp = foundMeta?.nomeLista || playerName; }
+                } else { round = { ...current }; }
 
-                /**
-                 * LÓGICA DE PROGRESSÃO:
-                 * Se a nota da rodada (rnd) for maior que a atual (curr), sobe 5% da diferença.
-                 * Se for menor ou igual, mantém o valor atual (nível conquistado não se perde).
-                 */
-                const calc = (curr: number, rnd: number) => {
-                    if (rnd <= curr) return curr;
-                    const weight = 0.05;
-                    const novoValor = (curr * (1 - weight)) + (rnd * weight);
-                    return Number(novoValor.toFixed(2));
-                };
+                const calc = (curr: number, rnd: number) => rnd <= curr ? curr : Number(((curr * 0.95) + (rnd * 0.05)).toFixed(2));
 
                 await setDoc(metaRef, {
                     nomeLista: foundMeta?.nomeLista || playerName,
@@ -132,17 +93,8 @@ export const MatchLogic = {
                 }, { merge: true });
             }
 
-            await updateDoc(matchRef, {
-                status: "finished",
-                mvp: calculatedMvp || "Ninguém",
-                preMatchStats: preMatchStats,
-                updatedAt: serverTimestamp()
-            });
-
+            await updateDoc(matchRef, { status: "finished", mvp: calculatedMvp || "Ninguém", preMatchStats, updatedAt: serverTimestamp() });
             return { success: true };
-        } catch (e) {
-            console.error("Erro ao finalizar partida:", e);
-            throw e;
-        }
+        } catch (e) { console.error(e); throw e; }
     }
 };

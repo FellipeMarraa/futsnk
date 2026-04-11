@@ -1,13 +1,12 @@
-import { useEffect, useState } from "react"
-import { ChevronRight, Loader2, Medal, Search, Shield, Target, TrendingUp, Zap } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
-import { db } from "@/lib/firebase"
+import {useEffect, useState} from "react"
+import {ChevronRight, Loader2, Search, Shield, Target, TrendingUp, Zap} from "lucide-react"
+import {db} from "@/lib/firebase"
 import {collection, deleteDoc, doc, onSnapshot, query, serverTimestamp, setDoc} from "firebase/firestore"
-import { useAuth } from "@/contexts/auth-context"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Dialog, DialogContent, DialogTrigger, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+import {useAuth} from "@/contexts/auth-context"
+import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar"
+import {Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger} from "@/components/ui/dialog"
 import * as VisuallyHidden from "@radix-ui/react-visually-hidden"
-import {toast} from "@/components/ui/use-toast.ts";
+import {toast} from "@/hooks/use-toast"
 
 interface PlayerMeta {
     id: string;
@@ -18,6 +17,7 @@ interface PlayerMeta {
     finishing: number;
     userId?: string;
     photoURL?: string;
+    aliases?: string[];
 }
 
 export function PlayerListManager({ groupId }: { groupId: string, isAdmin: boolean, currentMatchPlayers: string[] }) {
@@ -28,33 +28,11 @@ export function PlayerListManager({ groupId }: { groupId: string, isAdmin: boole
 
     useEffect(() => {
         const q = query(collection(db, "groups", groupId, "players_meta"));
-
         const unsubscribe = onSnapshot(q, (snap) => {
-            const data = snap.docs.map(d => {
-                const docData = d.data();
-
-                // 1. Pegamos o nome de dentro do documento
-                let nomeReal = docData.nomeLista || docData.displayName;
-
-                // 2. SE NÃO EXISTIR NOME DENTRO:
-                if (!nomeReal) {
-                    // Se o ID do documento for curto (ex: "marra"), usamos ele.
-                    // Se for longo (UID do Google), usamos "Atleta".
-                    nomeReal = d.id.length > 20 ? "Atleta" : d.id;
-                }
-
-                return {
-                    id: d.id,
-                    nomeLista: nomeReal, // Agora passamos o nome tratado
-                    technique: Number(docData.technique) || 50,
-                    speed: Number(docData.speed) || 50,
-                    defense: Number(docData.defense) || 50,
-                    finishing: Number(docData.finishing) || 50,
-                    userId: docData.userId || (docData.uid ? d.id : undefined),
-                    photoURL: docData.photoURL
-                };
-            }) as PlayerMeta[];
-
+            const data = snap.docs.map(d => ({
+                id: d.id,
+                ...d.data()
+            })) as any;
             setPlayersMetadata(data);
             setLoading(false);
         });
@@ -63,49 +41,95 @@ export function PlayerListManager({ groupId }: { groupId: string, isAdmin: boole
 
     useEffect(() => {
         const syncOfficialProfile = async () => {
-            // Bloqueia se não houver usuário ou se os dados ainda estiverem carregando
-            if (!user || !user.nomeLista || loading || playersMetadata.length === 0) return;
+            // 1. TRAVA DE SEGURANÇA: Só prossegue se o user e o nomeLista existirem de fato
+            if (!user || !user.nomeLista || loading) return;
 
             const officialId = user.uid;
-            // 1. Usamos a constante meuNome para todas as comparações abaixo
-            const meuNome = user.nomeLista.toLowerCase().trim();
+            const myOfficialDoc = playersMetadata.find(p => p.id === officialId);
 
-            const hasOfficial = playersMetadata.some(p => p.id === officialId);
+            // Garantimos que o nome é uma string para o TS parar de reclamar
+            const meuNomeOficial: string = user.nomeLista.toLowerCase().trim();
 
+            // 2. CRIAÇÃO PROATIVA (Se o usuário não tem nada no grupo)
+            if (!myOfficialDoc) {
+                // Verificamos se existe algum "fantasma" que deveria ser ele
+                const ghostMatch = playersMetadata.find(p => {
+                    const nomeDoc = (p.nomeLista || "").toLowerCase().trim();
+                    const idDoc = p.id.toLowerCase().trim();
+                    return meuNomeOficial.includes(nomeDoc) || nomeDoc.includes(meuNomeOficial) ||
+                        idDoc.includes(meuNomeOficial) || meuNomeOficial.includes(idDoc);
+                });
+
+                // Se não há fantasma nenhum, cria o perfil do zero
+                if (!ghostMatch) {
+                    const officialRef = doc(db, "groups", groupId, "players_meta", officialId);
+                    await setDoc(officialRef, {
+                        nomeLista: user.nomeLista,
+                        userId: officialId,
+                        photoURL: user.photoURL || "",
+                        technique: 70, speed: 70, defense: 70, finishing: 70,
+                        aliases: [meuNomeOficial],
+                        lastUpdated: serverTimestamp()
+                    });
+                    return;
+                }
+            }
+
+            // 3. SINCRONIZAÇÃO DE FANTASMA (O "engolidor" de duplicatas)
             const ghostProfile = playersMetadata.find(p => {
-                // Não queremos que o perfil oficial seja considerado um "fantasma" dele mesmo
                 if (p.id === officialId) return false;
 
-                const nomeDocInterno = (p.nomeLista || "").toLowerCase().trim();
-                const idDoDocumento = p.id.toLowerCase().trim();
+                const nomeDocFantasma = (p.nomeLista || "").toLowerCase().trim();
+                const idDocFantasma = p.id.toLowerCase().trim();
 
-                // 2. Comparamos usando a constante 'meuNome' que o TS já validou
-                return idDoDocumento === meuNome || nomeDocInterno === meuNome || nomeDocInterno.includes(meuNome);
+                // Lógica agressiva de inclusão
+                return meuNomeOficial.includes(nomeDocFantasma) ||
+                    nomeDocFantasma.includes(meuNomeOficial) ||
+                    idDocFantasma.includes(meuNomeOficial) ||
+                    meuNomeOficial.includes(idDocFantasma);
             });
 
             if (ghostProfile) {
                 try {
                     const officialRef = doc(db, "groups", groupId, "players_meta", officialId);
-                    const ghostRef = doc(db, "groups", groupId, "players_meta", ghostProfile.id);
+                    const nomeFantasmaFormatado = ghostProfile.nomeLista.toLowerCase().trim();
 
-                    if (!hasOfficial) {
+                    if (!myOfficialDoc) {
+                        // Se não tenho oficial, crio um usando os dados do fantasma
                         await setDoc(officialRef, {
                             ...ghostProfile,
-                            nomeLista: user.nomeLista, // Usando o valor original para o banco
-                            userId: user.uid,
-                            photoURL: user.photoURL,
+                            userId: officialId,
+                            photoURL: user.photoURL || "",
+                            nomeLista: user.nomeLista,
+                            aliases: [meuNomeOficial, nomeFantasmaFormatado],
                             lastUpdated: serverTimestamp()
                         });
+                    } else {
+                        // Se já tenho oficial, apenas "roubo" as notas do fantasma se forem maiores
+                        // e adiciono o nome dele aos meus aliases
+                        const currentAliases = myOfficialDoc.aliases || [];
+                        const newAliases = Array.from(new Set([...currentAliases, nomeFantasmaFormatado, meuNomeOficial]));
+
+                        await setDoc(officialRef, {
+                            // Só atualiza se o fantasma tiver nota (evita zerar perfil oficial)
+                            technique: ghostProfile.technique > 70 ? ghostProfile.technique : myOfficialDoc.technique,
+                            speed: ghostProfile.speed > 70 ? ghostProfile.speed : myOfficialDoc.speed,
+                            defense: ghostProfile.defense > 70 ? ghostProfile.defense : myOfficialDoc.defense,
+                            finishing: ghostProfile.finishing > 70 ? ghostProfile.finishing : myOfficialDoc.finishing,
+                            aliases: newAliases,
+                            lastUpdated: serverTimestamp()
+                        }, { merge: true });
                     }
 
-                    await deleteDoc(ghostRef);
+                    // Deleta o fantasma do banco
+                    await deleteDoc(doc(db, "groups", groupId, "players_meta", ghostProfile.id));
 
                     toast({
                         title: "PERFIL SINCRONIZADO",
-                        description: "Sua conta oficial foi vinculada ao seu histórico."
+                        description: `O apelido "${ghostProfile.nomeLista}" agora está vinculado à sua conta.`
                     });
                 } catch (e) {
-                    console.error("Erro no Sync:", e);
+                    console.error("Erro na unificação:", e);
                 }
             }
         };
@@ -118,7 +142,6 @@ export function PlayerListManager({ groupId }: { groupId: string, isAdmin: boole
         const chu = Number(p.finishing) || 70;
         const vel = Number(p.speed) || 70;
         const def = Number(p.defense) || 70;
-
         return Math.round((tec * 0.35) + (chu * 0.35) + (vel * 0.15) + (def * 0.15));
     };
 
@@ -126,101 +149,59 @@ export function PlayerListManager({ groupId }: { groupId: string, isAdmin: boole
         .filter(p => p.nomeLista?.toLowerCase().includes(searchTerm.toLowerCase()))
         .sort((a, b) => calculateOVR(b) - calculateOVR(a));
 
-    if (loading) return (
-        <div className="py-20 text-center"><Loader2 className="size-8 animate-spin text-primary opacity-40" /></div>
-    )
+    if (loading) return <div className="py-20 text-center"><Loader2 className="size-8 animate-spin text-primary opacity-40" /></div>
 
     return (
-        <div className="space-y-4 animate-in fade-in duration-500 flex flex-col h-full">
+        <div className="space-y-4 flex flex-col h-full text-left">
             <div className="relative px-1 shrink-0">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-white/20" />
                 <input
-                    className="flex h-11 w-full rounded-xl border border-white/5 bg-white/[0.03] px-11 text-sm font-bold text-white placeholder:text-white/20 focus:outline-none focus:ring-1 focus:ring-primary/40 transition-all"
+                    className="flex h-11 w-full rounded-xl border border-white/5 bg-white/[0.03] px-11 text-sm font-bold text-white focus:outline-none focus:ring-1 focus:ring-primary/40 transition-all"
                     placeholder="BUSCAR ATLETA..."
                     value={searchTerm}
                     onChange={e => setSearchTerm(e.target.value)}
                 />
             </div>
-
-            {/* CONTAINER COM SCROLL AJUSTADO */}
             <div className="grid gap-2 overflow-y-auto max-h-[60vh] pr-1 custom-scrollbar">
-                {filteredPlayers.map((player, index) => {
-                    const isMe = player.userId === user?.uid;
+                {filteredPlayers.map((player) => {
+                    const isMe = player.id === user?.uid;
                     const ovr = calculateOVR(player);
-
                     return (
                         <Dialog key={player.id}>
                             <DialogTrigger asChild>
-                                <div className={`flex items-center gap-3 p-3 rounded-xl border border-white/5 transition-all active:scale-[0.98] cursor-pointer ${isMe ? 'bg-primary/10 border-primary/20' : 'bg-white/[0.02] hover:bg-white/[0.05]'}`}>
-                                    <div className="flex flex-col items-center justify-center w-8 shrink-0">
-                                        <span className={`text-lg font-black italic tracking-tighter leading-none ${ovr >= 70 ? 'text-primary' : 'text-white'}`}>
-                                            {ovr}
-                                        </span>
+                                <div className={`flex items-center gap-3 p-3 rounded-xl border border-white/5 cursor-pointer ${isMe ? 'bg-primary/10 border-primary/20' : 'bg-white/[0.02]'}`}>
+                                    <div className="w-8 shrink-0 text-center">
+                                        <span className={`text-lg font-black italic ${ovr >= 70 ? 'text-primary' : 'text-white'}`}>{ovr}</span>
                                     </div>
-
                                     <Avatar className="size-9 border border-white/10 shrink-0">
-                                        <AvatarImage src={player.photoURL} />
-                                        <AvatarFallback className="bg-zinc-800 text-[10px] font-black italic uppercase">
-                                            {player.nomeLista.substring(0, 1)}
-                                        </AvatarFallback>
+                                        <AvatarImage src={player.photoURL} className="object-cover" />
+                                        <AvatarFallback className="bg-zinc-800 text-[10px] font-black uppercase">{player.nomeLista.substring(0, 1)}</AvatarFallback>
                                     </Avatar>
-
                                     <div className="flex-1 min-w-0">
-                                        <p className="text-xs font-black italic uppercase text-white truncate tracking-tight">
-                                            {player.nomeLista}
-                                        </p>
+                                        <p className="text-xs font-black uppercase text-white truncate">{player.nomeLista}</p>
                                     </div>
-
-                                    <div className="flex items-center gap-2 shrink-0">
-                                        {index === 0 && searchTerm === "" && <Medal className="size-3 text-primary" />}
-                                        <ChevronRight className="size-4 text-white/20" />
-                                    </div>
+                                    <ChevronRight className="size-4 text-white/20" />
                                 </div>
                             </DialogTrigger>
-
-                            <DialogContent className="w-[85%] max-w-[320px] bg-[#1a1a1e] border-none rounded-[2.5rem] p-0 overflow-hidden shadow-2xl outline-none">
-                                <VisuallyHidden.Root>
-                                    <DialogTitle>Perfil de Atleta: {player.nomeLista}</DialogTitle>
-                                    <DialogDescription>Detalhes de atributos e OVR do jogador.</DialogDescription>
-                                </VisuallyHidden.Root>
-
+                            <DialogContent className="w-[85%] max-w-[320px] bg-[#1a1a1e] border-none rounded-[2.5rem] p-0 overflow-hidden outline-none">
+                                <VisuallyHidden.Root><DialogTitle>Perfil</DialogTitle><DialogDescription>Atributos</DialogDescription></VisuallyHidden.Root>
                                 <div className={`relative flex flex-col items-center pt-10 pb-8 px-6 border-t-4 ${isMe ? 'border-primary' : 'border-white/10'}`}>
                                     <div className="absolute top-6 left-6 flex flex-col items-center">
-                                        <span className="text-4xl font-black italic tracking-tighter text-white leading-none">
-                                            {ovr}
-                                        </span>
+                                        <span className="text-4xl font-black italic text-white leading-none">{ovr}</span>
                                         <span className="text-[10px] font-black text-primary uppercase tracking-widest">OVR</span>
                                     </div>
-
-                                    <div className="relative mb-6">
-                                        <Avatar className="size-32 border-4 border-white/5 shadow-2xl">
-                                            <AvatarImage src={player.photoURL} className="object-cover" />
-                                            <AvatarFallback className="bg-zinc-800 text-white/5 font-black text-5xl italic uppercase leading-none flex items-center justify-center">
-                                                {player.nomeLista.substring(0, 1)}
-                                            </AvatarFallback>
-                                        </Avatar>
-                                        {isMe && (
-                                            <Badge className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-primary text-black font-black uppercase italic text-[8px] px-3">
-                                                Seu Perfil
-                                            </Badge>
-                                        )}
-                                    </div>
-
-                                    <div className="text-center mb-8">
-                                        <h2 className="text-2xl font-black italic uppercase text-white tracking-tighter leading-none mb-1">
-                                            {player.nomeLista}
-                                        </h2>
-                                        <p className="text-[9px] font-bold text-white/30 uppercase tracking-[0.3em]">Membro Oficial</p>
-                                    </div>
-
+                                    <Avatar className="size-32 border-4 border-white/5 shadow-2xl bg-zinc-900 mb-6">
+                                        <AvatarImage src={player.photoURL} className="object-cover" />
+                                        <AvatarFallback className="bg-zinc-800 text-white font-black text-5xl italic uppercase flex items-center justify-center">{player.nomeLista.substring(0,1)}</AvatarFallback>
+                                    </Avatar>
+                                    <h2 className="text-2xl font-black italic uppercase text-white mb-8">{player.nomeLista}</h2>
                                     <div className="w-full grid grid-cols-2 gap-y-6 border-t border-white/5 pt-8">
-                                        <AttributeBox label="Velocidade" value={Number(player.speed) || 50} icon={<Zap className="size-3" />} />
-                                        <AttributeBox label="Chute" value={Number(player.finishing) || 50} icon={<Target className="size-3" />} />
-                                        <AttributeBox label="Técnica" value={Number(player.technique) || 50} icon={<TrendingUp className="size-3" />} />
-                                        <AttributeBox label="Defesa" value={Number(player.defense) || 50} icon={<Shield className="size-3" />} />
+                                        <AttributeBox label="Velocidade" value={player.speed} icon={<Zap className="size-3" />} />
+                                        <AttributeBox label="Chute" value={player.finishing} icon={<Target className="size-3" />} />
+                                        <AttributeBox label="Técnica" value={player.technique} icon={<TrendingUp className="size-3" />} />
+                                        <AttributeBox label="Defesa" value={player.defense} icon={<Shield className="size-3" />} />
                                     </div>
                                 </div>
-                                <div className={`h-3 w-full ${isMe ? 'bg-primary/40' : 'bg-white/5'}`} />
                             </DialogContent>
                         </Dialog>
                     );
@@ -232,14 +213,12 @@ export function PlayerListManager({ groupId }: { groupId: string, isAdmin: boole
 
 function AttributeBox({ label, value, icon }: { label: string, value: number, icon: React.ReactNode }) {
     return (
-        <div className="flex flex-col items-center">
+        <div className="flex flex-col items-center text-center">
             <div className="flex items-center gap-1.5 mb-1">
                 <span className="text-white/20">{icon}</span>
                 <span className="text-[8px] font-black text-white/40 uppercase tracking-widest">{label}</span>
             </div>
-            <span className={`text-xl font-black italic tracking-tighter ${value >= 75 ? 'text-primary' : 'text-white'}`}>
-                {Math.round(value)}
-            </span>
+            <span className={`text-xl font-black italic ${value >= 75 ? 'text-primary' : 'text-white'}`}>{Math.round(value)}</span>
         </div>
     )
 }
