@@ -1,12 +1,11 @@
-import {useEffect, useState} from "react"
-import {db} from "@/lib/firebase"
-import {collection, doc, getDoc, getDocs, limit, query} from "firebase/firestore"
-import {Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle} from "@/components/ui/dialog"
-import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar"
-import {ChevronDown, Clock, Shield, Star, Target, TrendingUp, Zap} from "lucide-react"
+import { useEffect, useState } from "react"
+import { db } from "@/lib/firebase"
+import { collection, doc, getDoc, getDocs, limit, query } from "firebase/firestore"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { ChevronDown, Clock, Shield, Star, Target, TrendingUp, Zap, ChevronUp, Minus, AlertCircle } from "lucide-react"
 import * as VisuallyHidden from "@radix-ui/react-visually-hidden"
-import {DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger} from "@/components/ui/dropdown-menu"
-import {AlertCircle} from "lucide-react"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 
 export function PlayerProfileDialog({ isOpen, onClose, user, initialGroupId, allGroups }: {
     isOpen: boolean,
@@ -28,7 +27,7 @@ export function PlayerProfileDialog({ isOpen, onClose, user, initialGroupId, all
         const fetchPlayerData = async () => {
             setLoading(true)
             try {
-                // PRIORIDADE 1: Buscar pelo UID (Garante que pegue os 73 de defesa)
+                // PRIORIDADE 1: Buscar pelo UID
                 const metaRef = doc(db, "groups", activeGroupId, "players_meta", user.uid);
                 const metaSnap = await getDoc(metaRef);
 
@@ -36,7 +35,7 @@ export function PlayerProfileDialog({ isOpen, onClose, user, initialGroupId, all
                 if (metaSnap.exists()) {
                     data = metaSnap.data();
                 } else {
-                    // PRIORIDADE 2: Fallback para o nome (Caso ainda não tenha vinculado)
+                    // PRIORIDADE 2: Fallback para o nome
                     const nomeBusca = user.nomeLista?.toLowerCase().trim() || "";
                     const ghostRef = doc(db, "groups", activeGroupId, "players_meta", nomeBusca);
                     const ghostSnap = await getDoc(ghostRef);
@@ -44,18 +43,14 @@ export function PlayerProfileDialog({ isOpen, onClose, user, initialGroupId, all
                 }
                 setStats(data);
 
-                // 2. Buscar Médias da Última Partida (Filtro via JS para evitar erro de índice 400)
+                // 2. Buscar Médias da Última Partida
                 const matchesRef = collection(db, "groups", activeGroupId, "matches");
                 const matchesSnap = await getDocs(query(matchesRef, limit(20)));
 
                 const finishedMatches = matchesSnap.docs
                     .map(d => ({ id: d.id, ...d.data() as any }))
                     .filter(m => m.status === "finished")
-                    .sort((a, b) => {
-                        const timeA = a.updatedAt?.seconds || 0;
-                        const timeB = b.updatedAt?.seconds || 0;
-                        return timeB - timeA;
-                    });
+                    .sort((a, b) => (b.updatedAt?.seconds || 0) - (a.updatedAt?.seconds || 0));
 
                 if (finishedMatches.length > 0) {
                     const lastMatch = finishedMatches[0];
@@ -69,7 +64,6 @@ export function PlayerProfileDialog({ isOpen, onClose, user, initialGroupId, all
                         const rData = rDoc.data().ratings;
                         if (!rData) return;
 
-                        // Busca o jogador dentro das avaliações desta partida com normalização
                         Object.keys(rData).forEach(pName => {
                             const pNameNormalized = pName.toLowerCase().trim();
                             if (pNameNormalized === myNameNormalized ||
@@ -86,10 +80,11 @@ export function PlayerProfileDialog({ isOpen, onClose, user, initialGroupId, all
 
                     if (sums.count > 0) {
                         setLastMatchStats({
-                            technique: sums.technique / sums.count,
-                            speed: sums.speed / sums.count,
-                            finishing: sums.finishing / sums.count,
-                            defense: sums.defense / sums.count,
+                            // Convertendo para escala 0-100 para comparação de tendência
+                            technique: (sums.technique / sums.count) * 20,
+                            speed: (sums.speed / sums.count) * 20,
+                            finishing: (sums.finishing / sums.count) * 20,
+                            defense: (sums.defense / sums.count) * 20,
                             isMvp: lastMatch.mvp?.toLowerCase().trim() === myNameNormalized
                         });
                     } else {
@@ -116,8 +111,6 @@ export function PlayerProfileDialog({ isOpen, onClose, user, initialGroupId, all
         const d = Number(s.defense) || 70;
 
         const ovr = (t * 0.35) + (f * 0.35) + (v * 0.15) + (d * 0.15);
-
-        // Retorna com 1 casa decimal
         return ovr.toFixed(1);
     }
 
@@ -134,7 +127,6 @@ export function PlayerProfileDialog({ isOpen, onClose, user, initialGroupId, all
                 <div className="relative pt-12 pb-8 px-6 flex flex-col items-center">
                     <div className="absolute top-0 inset-x-0 h-32 bg-gradient-to-b from-primary/20 to-transparent pointer-events-none" />
 
-                    {/* SELETOR DE GRUPO - Alinhado com OVR */}
                     <div className="absolute top-8 right-8 z-20">
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -156,7 +148,6 @@ export function PlayerProfileDialog({ isOpen, onClose, user, initialGroupId, all
                         </DropdownMenu>
                     </div>
 
-                    {/* Badge de OVR */}
                     <div className="absolute top-8 left-8 flex flex-col items-center">
                         <span className="text-4xl font-black italic text-white tracking-tighter leading-none">
                             {calculateOVR(stats)}
@@ -179,13 +170,32 @@ export function PlayerProfileDialog({ isOpen, onClose, user, initialGroupId, all
                     </p>
 
                     <div className="w-full grid grid-cols-2 gap-3 mb-8">
-                        <AttributeItem label="Técnica" value={stats?.technique} icon={<TrendingUp className="size-3" />} />
-                        <AttributeItem label="Chute" value={stats?.finishing} icon={<Target className="size-3" />} />
-                        <AttributeItem label="Velocidade" value={stats?.speed} icon={<Zap className="size-3" />} />
-                        <AttributeItem label="Defesa" value={stats?.defense} icon={<Shield className="size-3" />} />
+                        <AttributeItem
+                            label="Técnica"
+                            value={stats?.technique}
+                            lastRoundValue={lastMatchStats?.technique}
+                            icon={<TrendingUp className="size-3" />}
+                        />
+                        <AttributeItem
+                            label="Chute"
+                            value={stats?.finishing}
+                            lastRoundValue={lastMatchStats?.finishing}
+                            icon={<Target className="size-3" />}
+                        />
+                        <AttributeItem
+                            label="Velocidade"
+                            value={stats?.speed}
+                            lastRoundValue={lastMatchStats?.speed}
+                            icon={<Zap className="size-3" />}
+                        />
+                        <AttributeItem
+                            label="Defesa"
+                            value={stats?.defense}
+                            lastRoundValue={lastMatchStats?.defense}
+                            icon={<Shield className="size-3" />}
+                        />
                     </div>
 
-                    {/* SECTION: ÚLTIMA ATUAÇÃO DETALHADA */}
                     <div className="w-full bg-white/[0.03] rounded-[2rem] p-5 border border-white/5 shadow-inner">
                         <div className="flex items-center justify-between mb-4">
                             <h4 className="text-[9px] font-black text-white/40 uppercase tracking-[0.2em] flex items-center gap-2">
@@ -201,10 +211,10 @@ export function PlayerProfileDialog({ isOpen, onClose, user, initialGroupId, all
 
                         {lastMatchStats ? (
                             <div className="space-y-3">
-                                <RatingRow label="Técnica" value={lastMatchStats.technique} />
-                                <RatingRow label="Velocidade" value={lastMatchStats.speed} />
-                                <RatingRow label="Chute" value={lastMatchStats.finishing} />
-                                <RatingRow label="Defesa" value={lastMatchStats.defense} />
+                                <RatingRow label="Técnica" value={lastMatchStats.technique / 20} />
+                                <RatingRow label="Velocidade" value={lastMatchStats.speed / 20} />
+                                <RatingRow label="Chute" value={lastMatchStats.finishing / 20} />
+                                <RatingRow label="Defesa" value={lastMatchStats.defense / 20} />
                             </div>
                         ) : (
                             <div className="flex flex-col items-center py-4 opacity-20">
@@ -239,16 +249,37 @@ function RatingRow({ label, value }: { label: string, value: number }) {
     )
 }
 
-function AttributeItem({ label, value, icon }: any) {
-    const val = Math.round(Number(value) || 70);
+function AttributeItem({ label, value, lastRoundValue, icon }: any) {
+    const currentVal = Number(value) || 70;
+
+    // Tendência minimalista: Se a nota da última rodada foi maior que o nível atual
+    const trend = lastRoundValue !== undefined
+        ? (lastRoundValue > currentVal ? 'up' : 'neutral')
+        : 'none';
+
     return (
         <div className="flex items-center justify-between bg-white/[0.03] rounded-xl px-4 py-3 border border-white/5 hover:bg-white/[0.05] transition-colors">
             <div className="flex items-center gap-2">
                 <span className="text-primary/60">{icon}</span>
-                <span className="text-[10px] font-black text-white/50 uppercase tracking-tighter">{label}</span>
+                <span className="text-[10px] font-black text-white/50 uppercase tracking-tighter">
+                    {label}
+                </span>
             </div>
-            <span className="text-base font-black italic text-white tracking-tighter">{val}</span>
+
+            <div className="flex items-center gap-1.5">
+                {/* Exibição com decimal para ver progresso real */}
+                <span className="text-base font-black italic text-white tracking-tighter">
+                    {currentVal.toFixed(1)}
+                </span>
+
+                {/* Indicadores minimalistas ao lado do valor */}
+                {trend === 'up' && (
+                    <ChevronUp className="size-3 text-primary" />
+                )}
+                {trend === 'neutral' && (
+                    <Minus className="size-3 text-white/10" />
+                )}
+            </div>
         </div>
     )
 }
-

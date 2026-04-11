@@ -81,8 +81,7 @@ export const MatchLogic = {
                     if (perf > bestRoundPerf) { bestRoundPerf = perf; calculatedMvp = foundMeta?.nomeLista || playerName; }
                 } else { round = { ...current }; }
 
-                const calc = (curr: number, rnd: number) => rnd <= curr ? curr : Number(((curr * 0.95) + (rnd * 0.05)).toFixed(2));
-
+                const calc = (curr: number, rnd: number) => rnd <= curr ? curr : Number(((curr * 0.90) + (rnd * 0.10)).toFixed(2));
                 await setDoc(metaRef, {
                     nomeLista: foundMeta?.nomeLista || playerName,
                     technique: calc(current.technique, round.technique),
