@@ -1,9 +1,10 @@
-import {useEffect, useState} from "react"
+import { useEffect, useState } from "react"
 import {
     ArrowLeft,
     Calendar,
     ChevronRight,
     CircleDollarSign,
+    Fingerprint,
     Loader2,
     MapPin,
     Pencil,
@@ -14,12 +15,12 @@ import {
     Users,
     Wallet
 } from "lucide-react"
-import {Card, CardContent} from "@/components/ui/card"
-import {Badge} from "@/components/ui/badge"
-import {Button} from "@/components/ui/button"
-import {Tabs, TabsContent, TabsList, TabsTrigger} from "@/components/ui/tabs"
-import {Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,} from "@/components/ui/dialog"
-import {DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,} from "@/components/ui/dropdown-menu"
+import { Card, CardContent } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import {
     AlertDialog,
     AlertDialogAction,
@@ -30,16 +31,17 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import {useAuth} from "@/contexts/auth-context"
-import {deleteGroup, getGroupById, isUserAdmin} from "@/lib/firebase-services.ts"
-import {collection, onSnapshot, orderBy, query} from "firebase/firestore"
-import {db} from "@/lib/firebase.ts"
-import {MatchManager} from "./match-manager"
-import {MatchDetail} from "./match-detail"
-import {PlayerListManager} from "./player-list-manager"
-import {CreateGroupDialog} from "@/components/create-group-dialog"
-import {useToast} from "@/hooks/use-toast"
-import {InviteButton} from "@/components/invite-button.tsx";
+import { useAuth } from "@/contexts/auth-context"
+import { deleteGroup, getGroupById, isUserAdmin } from "@/lib/firebase-services.ts"
+import { collection, onSnapshot, orderBy, query } from "firebase/firestore"
+import { db } from "@/lib/firebase.ts"
+import { MatchManager } from "./match-manager"
+import { MatchDetail } from "./match-detail"
+import { PlayerListManager } from "./player-list-manager"
+import { AdminPlayerManager } from "./admin-player-manager"
+import { CreateGroupDialog } from "@/components/create-group-dialog"
+import { useToast } from "@/hooks/use-toast"
+import { InviteButton } from "@/components/invite-button.tsx";
 
 interface GroupDetailProps {
     groupId: string
@@ -55,7 +57,7 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
     const { toast } = useToast()
     const [group, setGroup] = useState<any | null>(null)
     const [loading, setLoading] = useState(true)
-    const [, setError] = useState<string | null>(null)
+    const [error, setError] = useState<string | null>(null)
     const [matches, setMatches] = useState<any[]>([])
     const [selectedMatch, setSelectedMatch] = useState<any | null>(null)
     const [isMatchModalOpen, setIsMatchModalOpen] = useState(false)
@@ -94,9 +96,16 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
         try {
             setLoading(true)
             const data = await getGroupById(groupId)
-            if (!data) setError("Grupo não encontrado")
-            else setGroup(data)
-        } catch (err) { setError("Erro ao carregar dados") } finally { setLoading(false) }
+            if (!data) {
+                setError("Grupo não encontrado")
+            } else {
+                setGroup(data)
+            }
+        } catch (err) {
+            setError("Erro ao carregar dados")
+        } finally {
+            setLoading(false)
+        }
     }
 
     useEffect(() => {
@@ -125,6 +134,13 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
         <div className="min-h-screen flex flex-col items-center justify-center bg-background">
             <Loader2 className="size-8 animate-spin text-primary" />
             <p className="text-[10px] font-bold uppercase tracking-widest mt-4">Sincronizando...</p>
+        </div>
+    )
+
+    if (error || !group) return (
+        <div className="min-h-screen flex flex-col items-center justify-center bg-background p-4 text-center">
+            <p className="text-red-500 font-bold mb-4">{error || "Erro ao carregar grupo"}</p>
+            <Button onClick={onBack} variant="outline">Voltar</Button>
         </div>
     )
 
@@ -162,7 +178,7 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
                             {userIsAdmin && (
                                 <DropdownMenu>
                                     <DropdownMenuTrigger asChild>
-                                        <button className="p-1 text-white/20 hover:text-white transition-colors">
+                                        <button className="p-1 text-white/20 hover:text-white transition-colors outline-none">
                                             <Settings2 className="size-4" />
                                         </button>
                                     </DropdownMenuTrigger>
@@ -187,7 +203,6 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
                     {userIsAdmin && (
                         <div className="flex items-center gap-2">
                             <InviteButton groupId={groupId} groupName={group.name} />
-
                             <Button
                                 onClick={() => setIsMatchModalOpen(true)}
                                 className="bg-primary hover:bg-primary/90 text-black font-black text-[9px] uppercase italic h-9 px-4 rounded-lg shadow-lg"
@@ -239,13 +254,18 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
                 </div>
 
                 <Tabs defaultValue="matches" className="w-full block">
-                    <TabsList className="grid w-full grid-cols-2 h-11 bg-white/5 border border-white/10 p-1 rounded-xl mb-6">
+                    <TabsList className={`grid w-full ${userIsAdmin ? 'grid-cols-3' : 'grid-cols-2'} h-11 bg-white/5 border border-white/10 p-1 rounded-xl mb-6`}>
                         <TabsTrigger value="matches" className="gap-2 font-black italic text-[10px] uppercase data-[state=active]:bg-primary data-[state=active]:text-black rounded-lg transition-all outline-none">
                             <Trophy className="size-3.5" /> Rodadas
                         </TabsTrigger>
                         <TabsTrigger value="players" className="gap-2 font-black italic text-[10px] uppercase data-[state=active]:bg-primary data-[state=active]:text-black rounded-lg transition-all outline-none">
                             <Users className="size-3.5" /> Níveis
                         </TabsTrigger>
+                        {userIsAdmin && (
+                            <TabsTrigger value="admin" className="gap-2 font-black italic text-[10px] uppercase data-[state=active]:bg-primary data-[state=active]:text-black rounded-lg transition-all outline-none">
+                                <Fingerprint className="size-3.5" /> Gestão
+                            </TabsTrigger>
+                        )}
                     </TabsList>
 
                     <TabsContent value="matches" className="w-full block m-0 outline-none space-y-4">
@@ -260,7 +280,6 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
                             <div className="grid gap-3 w-full">
                                 {matches.map((match, idx) => {
                                     const votingOpen = isVotingOpen(match.date, group.time);
-
                                     const matchNumber = matches.length - idx;
 
                                     const getStatusConfig = (status: string) => {
@@ -286,12 +305,11 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
                                         >
                                             <CardContent className="p-4 flex items-center justify-between">
                                                 <div className="flex items-center gap-4 min-w-0">
-                                                    {/* Bloco da Data */}
                                                     <div className="size-11 rounded-xl bg-zinc-900 border border-white/5 flex flex-col items-center justify-center shrink-0 shadow-inner">
                                                         <span className="text-[10px] font-black text-primary leading-none uppercase">
                                                             {new Date(match.date + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit' })}
                                                         </span>
-                                                                                    <span className="text-[7px] text-white/40 uppercase font-bold">
+                                                        <span className="text-[7px] text-white/40 uppercase font-bold">
                                                             {new Date(match.date + 'T00:00:00').toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '')}
                                                         </span>
                                                     </div>
@@ -310,7 +328,6 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
                                                         </span>
                                                     </div>
                                                 </div>
-                                                {/* Badge de Status */}
                                                 <div className="flex items-center gap-3 shrink-0">
                                                     <Badge className={`${matchStatus.color} border text-[8px] font-black uppercase italic tracking-tighter rounded px-2`}>
                                                         {matchStatus.label}
@@ -332,6 +349,12 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
                             currentMatchPlayers={latestMatchPlayers}
                         />
                     </TabsContent>
+
+                    {userIsAdmin && (
+                        <TabsContent value="admin" className="w-full block m-0 outline-none">
+                            <AdminPlayerManager groupId={groupId} />
+                        </TabsContent>
+                    )}
                 </Tabs>
             </main>
 
@@ -375,8 +398,8 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter className="mt-6 flex-row gap-2">
-                        <AlertDialogCancel className="flex-1 bg-white/5 border-none text-white text-[9px] font-black h-10">Abortar</AlertDialogCancel>
-                        <AlertDialogAction onClick={handleDeleteGroup} className="flex-1 bg-red-600 text-white text-[9px] font-black h-10">Excluir</AlertDialogAction>
+                        <AlertDialogCancel className="flex-1 bg-white/5 border-none text-white text-[9px] font-black h-10 hover:bg-white/10 transition-colors">Abortar</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleDeleteGroup} className="flex-1 bg-red-600 text-white text-[9px] font-black h-10 hover:bg-red-700 transition-colors">Excluir</AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
