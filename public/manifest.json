@@ -1,0 +1,21 @@
+{
+  "short_name": "FutMatch",
+  "name": "FutMatch - Gestão de Rodadas",
+  "icons": [
+    {
+      "src": "/apple-icon.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/apple-icon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#0c0c0e",
+  "background_color": "#0c0c0e",
+  "description": "Sorteio equilibrado e gestão de grupos de futebol"
+}
