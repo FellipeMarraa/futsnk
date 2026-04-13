@@ -41,10 +41,11 @@ export const MatchLogic = {
             let calculatedMvp = "";
             const preMatchStats: any[] = [];
 
+            const MULTIPLICADOR = 23.34;
+
             for (const playerName of players) {
                 const nameLower = playerName.toLowerCase().trim();
 
-                // BUSCA MESTRE: ID, Nome ou Alias
                 const foundMeta = existingMetas.find(m =>
                     m.id.toLowerCase().trim() === nameLower ||
                     (m.nomeLista || "").toLowerCase().trim() === nameLower ||
@@ -72,10 +73,10 @@ export const MatchLogic = {
 
                 if (acc && acc.technique.length > 0) {
                     const count = acc.technique.length;
-                    round.technique = (acc.technique.reduce((a: any, b: any) => a + b, 0) / count) * 20;
-                    round.speed = (acc.speed.reduce((a: any, b: any) => a + b, 0) / count) * 20;
-                    round.finishing = (acc.finishing.reduce((a: any, b: any) => a + b, 0) / count) * 20;
-                    round.defense = (acc.defense.reduce((a: any, b: any) => a + b, 0) / count) * 20;
+                    round.technique = (acc.technique.reduce((a: any, b: any) => a + b, 0) / count) * MULTIPLICADOR;
+                    round.speed = (acc.speed.reduce((a: any, b: any) => a + b, 0) / count) * MULTIPLICADOR;
+                    round.finishing = (acc.finishing.reduce((a: any, b: any) => a + b, 0) / count) * MULTIPLICADOR;
+                    round.defense = (acc.defense.reduce((a: any, b: any) => a + b, 0) / count) * MULTIPLICADOR;
 
                     const perf = (round.technique * 0.4) + (round.finishing * 0.3) + (round.speed * 0.15) + (round.defense * 0.15);
                     if (perf > bestRoundPerf) {
@@ -83,7 +84,7 @@ export const MatchLogic = {
                         calculatedMvp = foundMeta?.nomeLista || playerName;
                     }
                 } else {
-                    const NOTA_PADRAO = 60;
+                    const NOTA_PADRAO = 70;
                     round = {
                         technique: NOTA_PADRAO,
                         speed: NOTA_PADRAO,
@@ -93,6 +94,7 @@ export const MatchLogic = {
                 }
 
                 const calc = (curr: number, rnd: number) => rnd <= curr ? curr : Number(((curr * 0.90) + (rnd * 0.10)).toFixed(2));
+
                 await setDoc(metaRef, {
                     nomeLista: foundMeta?.nomeLista || playerName,
                     technique: calc(current.technique, round.technique),
@@ -103,7 +105,13 @@ export const MatchLogic = {
                 }, { merge: true });
             }
 
-            await updateDoc(matchRef, { status: "finished", mvp: calculatedMvp || "Ninguém", preMatchStats, updatedAt: serverTimestamp() });
+            await updateDoc(matchRef, {
+                status: "finished",
+                mvp: calculatedMvp || "Ninguém",
+                preMatchStats,
+                updatedAt: serverTimestamp()
+            });
+
             return { success: true };
         } catch (e) { console.error(e); throw e; }
     }
