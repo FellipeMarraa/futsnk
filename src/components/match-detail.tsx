@@ -83,6 +83,7 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
     const [activeTeamTab, setActiveTeamTab] = useState(0)
     const [isRatingModalOpen, setIsRatingModalOpen] = useState(false)
     const [selectedForDraw, setSelectedForDraw] = useState<string[]>([]);
+    const [hasLoadedInitialPlayers, setHasLoadedInitialPlayers] = useState(false);
 
     useEffect(() => {
         const matchRef = doc(db, "groups", groupId, "matches", initialMatch.id);
@@ -90,8 +91,9 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
             if (doc.exists()) {
                 const data = doc.data();
                 setMatch({ id: doc.id, ...data });
-                if (selectedForDraw.length === 0 && data.confirmedPlayers) {
+                if (!hasLoadedInitialPlayers && data.confirmedPlayers && data.status === "open") {
                     setSelectedForDraw(data.confirmedPlayers);
+                    setHasLoadedInitialPlayers(true);
                 }
             }
         });
