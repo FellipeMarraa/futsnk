@@ -78,8 +78,19 @@ export const MatchLogic = {
                     round.defense = (acc.defense.reduce((a: any, b: any) => a + b, 0) / count) * 20;
 
                     const perf = (round.technique * 0.4) + (round.finishing * 0.3) + (round.speed * 0.15) + (round.defense * 0.15);
-                    if (perf > bestRoundPerf) { bestRoundPerf = perf; calculatedMvp = foundMeta?.nomeLista || playerName; }
-                } else { round = { ...current }; }
+                    if (perf > bestRoundPerf) {
+                        bestRoundPerf = perf;
+                        calculatedMvp = foundMeta?.nomeLista || playerName;
+                    }
+                } else {
+                    const NOTA_PADRAO = 60;
+                    round = {
+                        technique: NOTA_PADRAO,
+                        speed: NOTA_PADRAO,
+                        finishing: NOTA_PADRAO,
+                        defense: NOTA_PADRAO
+                    };
+                }
 
                 const calc = (curr: number, rnd: number) => rnd <= curr ? curr : Number(((curr * 0.90) + (rnd * 0.10)).toFixed(2));
                 await setDoc(metaRef, {

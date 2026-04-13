@@ -16,7 +16,8 @@ import {
     Star,
     Trash2,
     UserMinus,
-    Users
+    Users,
+    Crown
 } from "lucide-react"
 import {Button} from "@/components/ui/button"
 import {Card} from "@/components/ui/card"
@@ -95,7 +96,6 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
             }
         });
 
-        // Monitoramento em tempo real de quem já recebeu votos
         const qRatings = collection(db, "groups", groupId, "matches", initialMatch.id, "technical_ratings");
         const unsubRatings = onSnapshot(qRatings, (snap) => {
             const names = new Set<string>();
@@ -124,7 +124,6 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
         return () => { unsubMatch(); unsubRatings(); unsubMeta(); };
     }, [initialMatch.id, groupId]);
 
-    // Lista de jogadores confirmados que ainda não receberam votos
     const pendingPlayers = (match.confirmedPlayers || []).filter((name: string) =>
         !votedPlayerNames.includes(name.toLowerCase().trim())
     );
@@ -428,23 +427,82 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
                                 )}
                             </div>
                         )}
+
+                        {/* SECTION: MISS DO RACHA (EX-MVP) */}
+                        {match.status === 'finished' && match.mvp && (
+                            <div className="w-full mt-8 flex justify-center animate-in fade-in slide-in-from-bottom-4 duration-700">
+                                <Card className="bg-white/[0.03] border-white/5 rounded-3xl p-4 flex items-center gap-4 w-full max-w-[320px] relative overflow-hidden group">
+                                    <div className="absolute top-0 right-0 p-2 opacity-10">
+                                        <Crown className="size-12 text-primary rotate-12" />
+                                    </div>
+
+                                    <div className="relative shrink-0">
+                                        <Avatar className="size-16 border-2 border-primary/50 shadow-[0_0_20px_rgba(234,255,0,0.2)]">
+                                            <AvatarImage
+                                                src={playersMeta[match.mvp.toLowerCase()]?.photoURL}
+                                                className="object-cover"
+                                            />
+                                            <AvatarFallback className="bg-zinc-800 text-xl font-black italic">
+                                                {match.mvp[0].toUpperCase()}
+                                            </AvatarFallback>
+                                        </Avatar>
+                                        <div className="absolute -bottom-1 -right-1 bg-primary p-1 rounded-full shadow-lg">
+                                            <Star className="size-3 text-black fill-black" />
+                                        </div>
+                                    </div>
+
+                                    <div className="flex flex-col min-w-0">
+                                        <div className="flex items-center gap-1.5 mb-0.5">
+                                            <Crown className="size-3 text-primary shrink-0" />
+                                            <span className="text-[9px] font-black text-primary uppercase tracking-[0.2em] italic">
+                                                Miss do Racha
+                                            </span>
+                                        </div>
+                                        <h3 className="text-lg font-black italic uppercase text-white truncate tracking-tighter leading-none">
+                                            {match.mvp}
+                                        </h3>
+                                        <p className="text-[8px] font-bold text-white/30 uppercase tracking-widest mt-1">
+                                            Destaque da Rodada
+                                        </p>
+                                    </div>
+                                </Card>
+                            </div>
+                        )}
                     </div>
 
                     <div className="lg:col-span-4 space-y-6">
-                        {/* ALERTAS DE VOTAÇÃO (ADMIN) */}
                         {isAdmin && match.status === 'voting_open' && (
                             <>
                                 {pendingPlayers.length > 0 ? (
                                     <Card className="bg-amber-500/10 border-amber-500/20 rounded-[2rem] p-6 animate-in fade-in slide-in-from-right-4 duration-500">
-                                        <div className="flex items-center gap-2 mb-4">
-                                            <AlertCircle className="size-4 text-amber-500" />
-                                            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-500">Atletas Sem Voto</h3>
+                                        <div className="flex items-center justify-between mb-4">
+                                            <div className="flex items-center gap-2">
+                                                <AlertCircle className="size-4 text-amber-500" />
+                                                <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-500">Atletas Sem Voto</h3>
+                                            </div>
+                                            <Button
+                                                onClick={() => setIsRatingModalOpen(true)}
+                                                variant="ghost"
+                                                className="h-7 px-3 bg-amber-500/20 text-amber-500 hover:bg-amber-500/30 text-[8px] font-black uppercase rounded-lg"
+                                            >
+                                                Votar Agora
+                                            </Button>
                                         </div>
                                         <div className="flex flex-wrap gap-2">
                                             {pendingPlayers.map((name: string) => (
-                                                <Badge key={name} variant="outline" className="bg-black/20 border-amber-500/30 text-white/60 text-[8px] font-bold uppercase italic px-3 py-1 rounded-full">{name}</Badge>
+                                                <Badge
+                                                    key={name}
+                                                    variant="outline"
+                                                    className="bg-black/20 border-amber-500/30 text-white/60 text-[8px] font-bold uppercase italic px-3 py-1 rounded-full cursor-pointer hover:border-amber-500 transition-colors"
+                                                    onClick={() => setIsRatingModalOpen(true)}
+                                                >
+                                                    {name}
+                                                </Badge>
                                             ))}
                                         </div>
+                                        <p className="text-[8px] text-white/20 font-bold uppercase mt-4 leading-tight italic">
+                                            * Use seu voto de admin para avaliar quem ficou no vácuo antes de encerrar.
+                                        </p>
                                     </Card>
                                 ) : (
                                     <Card className="bg-emerald-500/10 border-emerald-500/20 rounded-[2rem] p-6 text-center border-dashed">
@@ -494,7 +552,7 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
                 </div>
             </main>
 
-            {user && nomeLista && <MatchRatingModal isOpen={isRatingModalOpen} onClose={() => setIsRatingModalOpen(false)} match={match} currentUser={user} nomeLista={nomeLista} groupId={groupId} />}
+            {user && nomeLista && <MatchRatingModal isAdmin={isAdmin} isOpen={isRatingModalOpen} onClose={() => setIsRatingModalOpen(false)} match={match} currentUser={user} nomeLista={nomeLista} groupId={groupId} />}
 
             <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
                 <AlertDialogContent className="bg-zinc-950 border-white/10 rounded-[2.5rem] shadow-3xl">

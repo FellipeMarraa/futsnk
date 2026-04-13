@@ -27,7 +27,6 @@ export function PlayerProfileDialog({ isOpen, onClose, user, initialGroupId, all
         const fetchPlayerData = async () => {
             setLoading(true)
             try {
-                // PRIORIDADE 1: Buscar pelo UID
                 const metaRef = doc(db, "groups", activeGroupId, "players_meta", user.uid);
                 const metaSnap = await getDoc(metaRef);
 
@@ -35,7 +34,6 @@ export function PlayerProfileDialog({ isOpen, onClose, user, initialGroupId, all
                 if (metaSnap.exists()) {
                     data = metaSnap.data();
                 } else {
-                    // PRIORIDADE 2: Fallback para o nome
                     const nomeBusca = user.nomeLista?.toLowerCase().trim() || "";
                     const ghostRef = doc(db, "groups", activeGroupId, "players_meta", nomeBusca);
                     const ghostSnap = await getDoc(ghostRef);
@@ -43,7 +41,6 @@ export function PlayerProfileDialog({ isOpen, onClose, user, initialGroupId, all
                 }
                 setStats(data);
 
-                // 2. Buscar Médias da Última Partida
                 const matchesRef = collection(db, "groups", activeGroupId, "matches");
                 const matchesSnap = await getDocs(query(matchesRef, limit(20)));
 
@@ -80,7 +77,6 @@ export function PlayerProfileDialog({ isOpen, onClose, user, initialGroupId, all
 
                     if (sums.count > 0) {
                         setLastMatchStats({
-                            // Convertendo para escala 0-100 para comparação de tendência
                             technique: (sums.technique / sums.count) * 20,
                             speed: (sums.speed / sums.count) * 20,
                             finishing: (sums.finishing / sums.count) * 20,
@@ -169,7 +165,7 @@ export function PlayerProfileDialog({ isOpen, onClose, user, initialGroupId, all
                         {loading ? "Sincronizando..." : "Estatísticas da Temporada"}
                     </p>
 
-                    <div className="w-full grid grid-cols-2 gap-3 mb-8">
+                    <div className="w-full grid grid-cols-2 gap-2 mb-8">
                         <AttributeItem
                             label="Técnica"
                             value={stats?.technique}
@@ -252,33 +248,34 @@ function RatingRow({ label, value }: { label: string, value: number }) {
 function AttributeItem({ label, value, lastRoundValue, icon }: any) {
     const currentVal = Number(value) || 70;
 
-    // Tendência minimalista: Se a nota da última rodada foi maior que o nível atual
     const trend = lastRoundValue !== undefined
         ? (lastRoundValue > currentVal ? 'up' : 'neutral')
         : 'none';
 
     return (
-        <div className="flex items-center justify-between bg-white/[0.03] rounded-xl px-4 py-3 border border-white/5 hover:bg-white/[0.05] transition-colors">
-            <div className="flex items-center gap-2">
-                <span className="text-primary/60">{icon}</span>
-                <span className="text-[10px] font-black text-white/50 uppercase tracking-tighter">
+        <div className="flex items-center justify-between bg-white/[0.03] rounded-xl px-3 py-3 border border-white/5 hover:bg-white/[0.05] transition-colors overflow-hidden">
+            {/* Esquerda: Icone + Label (Com largura controlada) */}
+            <div className="flex items-center gap-1.5 min-w-0">
+                <span className="text-primary/60 shrink-0">{icon}</span>
+                <span className="text-[8px] font-black text-white/50 uppercase tracking-tighter truncate">
                     {label}
                 </span>
             </div>
 
-            <div className="flex items-center gap-1.5">
-                {/* Exibição com decimal para ver progresso real */}
-                <span className="text-base font-black italic text-white tracking-tighter">
+            {/* Direita: Valor + Tendência (Sempre fixo à direita) */}
+            <div className="flex items-center gap-1 shrink-0 ml-1">
+                <span className="text-[14px] font-black italic text-white tracking-tighter leading-none">
                     {currentVal.toFixed(1)}
                 </span>
 
-                {/* Indicadores minimalistas ao lado do valor */}
-                {trend === 'up' && (
-                    <ChevronUp className="size-3 text-primary" />
-                )}
-                {trend === 'neutral' && (
-                    <Minus className="size-3 text-white/10" />
-                )}
+                <div className="w-3 flex justify-center">
+                    {trend === 'up' && (
+                        <ChevronUp className="size-3 text-primary" />
+                    )}
+                    {trend === 'neutral' && (
+                        <Minus className="size-3 text-white/10" />
+                    )}
+                </div>
             </div>
         </div>
     )
