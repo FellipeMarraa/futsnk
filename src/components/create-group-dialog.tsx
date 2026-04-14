@@ -96,9 +96,15 @@ export function CreateGroupDialog({ isOpen, onClose, onSuccess, groupToEdit }: C
                 time: finalTime,
                 location,
                 maxPlayers: Number(maxPlayers),
-                // Converte para número ou 0 antes de salvar
                 courtValue: courtValue === "" ? 0 : Number(courtValue),
                 balance: balance === "" ? 0 : Number(balance),
+
+                ownerId: user.uid,
+                isPro: false,
+                planType: "free",
+                status: "active",
+                membersCount: 1,
+                createdAt: new Date(),
             }
 
             if (groupToEdit) {
@@ -111,6 +117,7 @@ export function CreateGroupDialog({ isOpen, onClose, onSuccess, groupToEdit }: C
             onSuccess()
             onClose()
         } catch (error) {
+            console.error("Erro ao salvar clube:", error)
             toast({ variant: "destructive", title: "ERRO DE SERVIDOR" })
         } finally {
             setLoading(false)
@@ -240,7 +247,7 @@ export function CreateGroupDialog({ isOpen, onClose, onSuccess, groupToEdit }: C
                     </div>
                 </div>
 
-                <div className="mt-4 flex items-center justify-between pt-4">
+                <div className="flex items-center justify-between">
                     <button
                         onClick={onClose}
                         className="text-[9px] font-black uppercase italic tracking-[0.2em] text-white/20 hover:text-white/60 transition-colors"

@@ -11,7 +11,9 @@ import {
     Star,
     Trash2,
     Trophy,
-    Users
+    Users,
+    Zap,
+    LayoutDashboard // Ícone para o Painel Supremo
 } from "lucide-react"
 import {Card, CardContent} from "@/components/ui/card"
 import {Badge} from "@/components/ui/badge"
@@ -35,12 +37,14 @@ import {deleteGroup, getUserGroups, isUserAdmin} from "@/lib/firebase-services.t
 import {useToast} from "@/hooks/use-toast"
 import {PlayerProfileDialog} from "@/components/player-profile-dialog.tsx";
 import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar.tsx";
+import { useNavigate } from "react-router-dom"; // Importado para navegação
 
 const DAYS_MAP: Record<string, string> = { "0": "Dom", "1": "Seg", "2": "Ter", "3": "Qua", "4": "Qui", "5": "Sex", "6": "Sáb" };
 
 export function Dashboard({ onSelectGroup }: { onSelectGroup: (groupId: string) => void }) {
-    const { user, isAdmin } = useAuth()
+    const { user } = useAuth()
     const { toast } = useToast()
+    const navigate = useNavigate(); // Hook para navegar para o painel administrativo
     const [groups, setGroups] = useState<any[]>([])
     const [loading, setLoading] = useState(true)
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
@@ -69,14 +73,12 @@ export function Dashboard({ onSelectGroup }: { onSelectGroup: (groupId: string) 
         }
     }
 
-    // Busca grupos apenas se o usuário estiver autenticado e com e-mail disponível
     useEffect(() => {
         if (user?.email) {
             fetchGroups()
         }
     }, [user?.email]);
 
-    // Sincroniza o nome de exibição do Google com o campo de input
     useEffect(() => {
         if (user?.displayName && !tempNome) {
             setTempNome(user.displayName);
@@ -146,10 +148,9 @@ export function Dashboard({ onSelectGroup }: { onSelectGroup: (groupId: string) 
         );
     }
 
-    // Se o usuário já tem nome, mas os dados do dashboard ainda estão sendo buscados
     if (loading) {
         return (
-            <div className="flex min-h-screen w-full items-center justify-center bg-background">
+            <div className="flex h-screen w-full items-center justify-center bg-background">
                 <Loader2 className="size-8 animate-spin text-primary opacity-50" />
             </div>
         )
@@ -167,17 +168,16 @@ export function Dashboard({ onSelectGroup }: { onSelectGroup: (groupId: string) 
                     </div>
 
                     <div className="flex items-center gap-2">
-                        {isAdmin && (
-                            <Button
-                                onClick={() => { setGroupToEdit(null); setIsCreateModalOpen(true); }}
-                                className="bg-primary text-black font-black text-[9px] uppercase italic h-8 px-3 rounded-md shadow-[0_0_15px_rgba(234,255,0,0.3)]"
-                            >
-                                <Plus className="size-3 mr-1 stroke-[3px]" /> Novo
-                            </Button>
-                        )}
+                        <Button
+                            onClick={() => { setGroupToEdit(null); setIsCreateModalOpen(true); }}
+                            className="bg-primary text-black font-black text-[9px] uppercase italic h-8 px-3 rounded-md shadow-[0_0_15px_rgba(234,255,0,0.3)]"
+                        >
+                            <Plus className="size-3 mr-1 stroke-[3px]" /> Fundar Clube
+                        </Button>
+
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                                <button className="outline-none"> {/* Usei button asChild para evitar conflitos de ref */}
+                                <button className="outline-none">
                                     <Avatar className="size-8 border border-primary/20 hover:opacity-80 transition-opacity">
                                         <AvatarImage src={user?.photoURL || ""} />
                                         <AvatarFallback className="text-[10px] bg-zinc-800">
@@ -187,14 +187,23 @@ export function Dashboard({ onSelectGroup }: { onSelectGroup: (groupId: string) 
                                 </button>
                             </DropdownMenuTrigger>
 
-                            {/* O Radix exige que o Content esteja dentro de um Portal ou diretamente no Root */}
-                            <DropdownMenuContent align="end" className="bg-[#1a1a1e] border-white/10 text-white p-1 w-44 rounded-xl shadow-2xl z-[100]">
+                            <DropdownMenuContent align="end" className="bg-[#1a1a1e] border-white/10 text-white p-1 w-48 rounded-xl shadow-2xl z-[100]">
                                 <DropdownMenuItem
                                     onClick={() => setIsProfileOpen(true)}
                                     className="font-bold text-[10px] uppercase italic py-2 cursor-pointer hover:bg-white/5 transition-colors focus:bg-white/5 focus:text-white"
                                 >
                                     <Star className="size-3.5 mr-2 text-primary fill-primary" /> Meu Perfil
                                 </DropdownMenuItem>
+
+                                {/* OPÇÃO SECRETA: Somente para o Admin Supremo do Sistema */}
+                                {user?.isSuperAdmin && (
+                                    <DropdownMenuItem
+                                        onClick={() => navigate("/admin-supremo")}
+                                        className="font-bold text-[10px] text-primary uppercase italic py-2 cursor-pointer hover:bg-primary/10 transition-colors focus:bg-primary/10 focus:text-primary"
+                                    >
+                                        <LayoutDashboard className="size-3.5 mr-2" /> Painel Supremo
+                                    </DropdownMenuItem>
+                                )}
 
                                 <DropdownMenuItem
                                     onClick={() => auth.signOut()}
@@ -221,18 +230,19 @@ export function Dashboard({ onSelectGroup }: { onSelectGroup: (groupId: string) 
                         <div className="bg-white/5 p-6 rounded-[2.5rem] border border-white/10 shadow-2xl max-w-sm w-full">
                             <AlertCircle className="size-12 text-primary mx-auto mb-4 opacity-80" />
                             <h2 className="text-lg font-black italic uppercase tracking-tighter text-white mb-2">
-                                Acesso Restrito
+                                Sem Clubes Ativos
                             </h2>
                             <p className="text-xs font-bold text-white/40 uppercase tracking-widest leading-relaxed">
                                 Você ainda não faz parte de nenhum clube. <br/>
-                                <span className="text-primary/60 text-[10px]">Peça o link de convite ao administrador.</span>
+                                <span className="text-primary/60 text-[10px]">Crie o seu no botão "Fundar Clube" ou peça o link ao seu administrador.</span>
                             </p>
                         </div>
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         {groups.map((group) => {
-                            const userIsAdmin = user?.email ? isUserAdmin(group, user.email) : false
+                            const userIsAdmin = isUserAdmin(group, user)
+
                             return (
                                 <Card
                                     key={group.id}
@@ -246,12 +256,23 @@ export function Dashboard({ onSelectGroup }: { onSelectGroup: (groupId: string) 
                                             <div className="size-10 bg-zinc-900/80 rounded-lg flex items-center justify-center border border-primary/30 shadow-[0_0_10px_rgba(234,255,0,0.1)]">
                                                 <Users className="size-5 text-primary" />
                                             </div>
-                                            {userIsAdmin && (
-                                                <div className="flex gap-1.5">
-                                                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-md bg-white/5 text-white/70 hover:bg-white/10" onClick={(e) => { e.stopPropagation(); setGroupToEdit(group); setIsCreateModalOpen(true); }}><Pencil className="size-3.5" /></Button>
-                                                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-md bg-red-500/10 text-red-400 hover:bg-red-500/20" onClick={(e) => { e.stopPropagation(); setGroupIdToDelete(group.id); setIsDeleteDialogOpen(true); }}><Trash2 className="size-3.5" /></Button>
-                                                </div>
-                                            )}
+
+                                            <div className="flex items-center gap-2">
+                                                {group.isPro ? (
+                                                    <Badge className="bg-amber-500/10 text-amber-500 border border-amber-500/20 text-[7px] font-black uppercase px-1.5 h-4 flex items-center gap-1">
+                                                        <Zap className="size-2 fill-amber-500" /> PRO
+                                                    </Badge>
+                                                ) : (
+                                                    <Badge className="bg-white/5 text-white/30 border-none text-[7px] font-black uppercase px-1.5 h-4">FREE</Badge>
+                                                )}
+
+                                                {userIsAdmin && (
+                                                    <div className="flex gap-1.5">
+                                                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-md bg-white/5 text-white/70 hover:bg-white/10" onClick={(e) => { e.stopPropagation(); setGroupToEdit(group); setIsCreateModalOpen(true); }}><Pencil className="size-3.5" /></Button>
+                                                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-md bg-red-500/10 text-red-400 hover:bg-red-500/20" onClick={(e) => { e.stopPropagation(); setGroupIdToDelete(group.id); setIsDeleteDialogOpen(true); }}><Trash2 className="size-3.5" /></Button>
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
 
                                         <div className="space-y-2.5">
@@ -259,7 +280,9 @@ export function Dashboard({ onSelectGroup }: { onSelectGroup: (groupId: string) 
                                                 <h3 className="text-lg font-black italic tracking-tighter uppercase text-primary truncate">
                                                     {group.name}
                                                 </h3>
-                                                {userIsAdmin && <Badge className="bg-primary text-black font-black text-[7px] uppercase px-1.5 h-4 rounded-xs shadow-[0_0_10px_rgba(234,255,0,0.2)]">FOUNDER</Badge>}
+                                                {group.ownerId === user?.uid && (
+                                                    <Badge className="bg-primary text-black font-black text-[7px] uppercase px-1.5 h-4 rounded-xs shadow-[0_0_10px_rgba(234,255,0,0.2)]">FOUNDER</Badge>
+                                                )}
                                             </div>
 
                                             <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[9px] font-bold text-white/60 uppercase tracking-widest">
@@ -310,6 +333,7 @@ export function Dashboard({ onSelectGroup }: { onSelectGroup: (groupId: string) 
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
+
             <PlayerProfileDialog
                 isOpen={isProfileOpen}
                 onClose={() => setIsProfileOpen(false)}
@@ -317,7 +341,13 @@ export function Dashboard({ onSelectGroup }: { onSelectGroup: (groupId: string) 
                 initialGroupId={groups[0]?.id}
                 allGroups={groups}
             />
-            <CreateGroupDialog isOpen={isCreateModalOpen} groupToEdit={groupToEdit} onClose={() => { setIsCreateModalOpen(false); setGroupToEdit(null); }} onSuccess={fetchGroups} />
+
+            <CreateGroupDialog
+                isOpen={isCreateModalOpen}
+                groupToEdit={groupToEdit}
+                onClose={() => { setIsCreateModalOpen(false); setGroupToEdit(null); }}
+                onSuccess={fetchGroups}
+            />
         </div>
     )
 }

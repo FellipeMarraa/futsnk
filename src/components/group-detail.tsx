@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import {useEffect, useState} from "react"
 import {
     ArrowLeft,
     Calendar,
@@ -10,17 +10,18 @@ import {
     Pencil,
     Plus,
     Settings2,
+    ShieldCheck,
     Trash2,
     Trophy,
     Users,
     Wallet
 } from "lucide-react"
-import { Card, CardContent } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import {Card, CardContent} from "@/components/ui/card"
+import {Badge} from "@/components/ui/badge"
+import {Button} from "@/components/ui/button"
+import {Tabs, TabsContent, TabsList, TabsTrigger} from "@/components/ui/tabs"
+import {Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle} from "@/components/ui/dialog"
+import {DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger} from "@/components/ui/dropdown-menu"
 import {
     AlertDialog,
     AlertDialogAction,
@@ -31,17 +32,17 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { useAuth } from "@/contexts/auth-context"
-import { deleteGroup, getGroupById, isUserAdmin } from "@/lib/firebase-services.ts"
-import { collection, onSnapshot, orderBy, query } from "firebase/firestore"
-import { db } from "@/lib/firebase.ts"
-import { MatchManager } from "./match-manager"
-import { MatchDetail } from "./match-detail"
-import { PlayerListManager } from "./player-list-manager"
-import { AdminPlayerManager } from "./admin-player-manager"
-import { CreateGroupDialog } from "@/components/create-group-dialog"
-import { useToast } from "@/hooks/use-toast"
-import { InviteButton } from "@/components/invite-button.tsx";
+import {useAuth} from "@/contexts/auth-context"
+import {deleteGroup, getGroupById, isUserAdmin} from "@/lib/firebase-services.ts"
+import {collection, onSnapshot, orderBy, query} from "firebase/firestore"
+import {db} from "@/lib/firebase.ts"
+import {MatchManager} from "./match-manager"
+import {MatchDetail} from "./match-detail"
+import {PlayerListManager} from "./player-list-manager"
+import {AdminPlayerManager} from "./admin-player-manager"
+import {CreateGroupDialog} from "@/components/create-group-dialog"
+import {useToast} from "@/hooks/use-toast"
+import {InviteButton} from "@/components/invite-button.tsx"
 
 interface GroupDetailProps {
     groupId: string
@@ -52,8 +53,31 @@ const DAYS_MAP: Record<string, string> = {
     "0": "Dom", "1": "Seg", "2": "Ter", "3": "Qua", "4": "Qui", "5": "Sex", "6": "Sáb"
 };
 
+/**
+ * COMPONENTE AUXILIAR: Card de Estatística/Info
+ */
+function InfoCard({ label, value, icon: Icon, variant = "default" }: any) {
+    const variants: any = {
+        default: "bg-white/5 border-white/5 text-white/40",
+        primary: "bg-primary/10 border-primary/20 text-primary/80",
+        success: "bg-emerald-500/10 border-emerald-500/20 text-emerald-500/80"
+    };
+
+    return (
+        <div className={`${variants[variant]} border p-3 rounded-xl shadow-inner`}>
+            <div className="flex items-center gap-2 mb-1">
+                <Icon className="size-3 opacity-60" />
+                <span className="text-[8px] font-black uppercase tracking-widest">{label}</span>
+            </div>
+            <p className="text-xs font-black text-white italic truncate uppercase">
+                {value}
+            </p>
+        </div>
+    );
+}
+
 export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
-    const { user } = useAuth()
+    const { user, isSuperAdmin } = useAuth()
     const { toast } = useToast()
     const [group, setGroup] = useState<any | null>(null)
     const [loading, setLoading] = useState(true)
@@ -64,6 +88,9 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
 
     const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+
+    // Permissão unificada (Dono ou Admin Supremo)
+    const userIsAdmin = isUserAdmin(group, user);
 
     const latestMatchPlayers = matches.length > 0 ? matches[0].confirmedPlayers || [] : [];
 
@@ -77,16 +104,13 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
         );
 
         const unsubscribe = onSnapshot(q, (snap) => {
-            const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-
+            const docs = snap.docs.map(d => ({ id: d.id, ...d.data() as any }));
             const sorted = [...docs].sort((a: any, b: any) => {
                 if (a.date !== b.date) return 0;
-
                 const timeA = a.createdAt?.seconds || a.createdAt?.toMillis?.() || Date.now();
                 const timeB = b.createdAt?.seconds || b.createdAt?.toMillis?.() || Date.now();
                 return timeB - timeA;
             });
-
             setMatches(sorted);
         });
         return () => unsubscribe();
@@ -144,8 +168,6 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
         </div>
     )
 
-    const userIsAdmin = user?.email ? isUserAdmin(group, user.email) : false
-
     if (selectedMatch) {
         return (
             <div className="min-h-screen bg-background p-4 max-w-5xl mx-auto">
@@ -160,7 +182,18 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
     }
 
     return (
-        <div className="min-h-screen bg-background text-foreground flex flex-col w-full overflow-x-hidden font-sans selection:bg-primary/20">
+        <div className="min-h-screen bg-background text-foreground flex flex-col w-full overflow-x-hidden font-sans">
+
+            {/* BARRA DE MODO OVERSEER */}
+            {isSuperAdmin && (
+                <div className="bg-primary/10 border-b border-primary/20 py-2 flex items-center justify-center gap-2 animate-in slide-in-from-top duration-500">
+                    <ShieldCheck className="size-3 text-primary" />
+                    <span className="text-[8px] font-black uppercase italic text-primary tracking-[0.2em]">
+                        Modo Overseer Ativo • Acesso Total
+                    </span>
+                </div>
+            )}
+
             <header className="sticky top-0 z-50 bg-background/60 backdrop-blur-md border-b border-white/5">
                 <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between gap-4">
                     <div className="flex items-center gap-3 min-w-0">
@@ -172,7 +205,9 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
                                 <h1 className="text-lg font-black italic uppercase tracking-tighter truncate text-white leading-none">
                                     {group.name}
                                 </h1>
-                                <p className="text-[8px] font-bold text-primary uppercase tracking-[0.2em] mt-1">Status: Ativo</p>
+                                <p className="text-[8px] font-bold text-primary uppercase tracking-[0.2em] mt-1">
+                                    {isSuperAdmin ? "Sistema: Overseer" : "Status: Ativo"}
+                                </p>
                             </div>
 
                             {userIsAdmin && (
@@ -183,16 +218,10 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
                                         </button>
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="start" className="bg-[#1a1a1e] border-white/10 text-white p-1 rounded-xl shadow-2xl">
-                                        <DropdownMenuItem
-                                            onClick={() => setIsEditDialogOpen(true)}
-                                            className="text-[10px] font-bold uppercase italic py-2 cursor-pointer gap-2"
-                                        >
+                                        <DropdownMenuItem onClick={() => setIsEditDialogOpen(true)} className="text-[10px] font-bold uppercase italic py-2 cursor-pointer gap-2">
                                             <Pencil className="size-3 text-primary" /> Editar Clube
                                         </DropdownMenuItem>
-                                        <DropdownMenuItem
-                                            onClick={() => setIsDeleteDialogOpen(true)}
-                                            className="text-[10px] font-bold uppercase italic py-2 cursor-pointer gap-2 text-red-400"
-                                        >
+                                        <DropdownMenuItem onClick={() => setIsDeleteDialogOpen(true)} className="text-[10px] font-bold uppercase italic py-2 cursor-pointer gap-2 text-red-400">
                                             <Trash2 className="size-3" /> Excluir Clube
                                         </DropdownMenuItem>
                                     </DropdownMenuContent>
@@ -200,6 +229,7 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
                             )}
                         </div>
                     </div>
+
                     {userIsAdmin && (
                         <div className="flex items-center gap-2">
                             <InviteButton groupId={groupId} groupName={group.name} />
@@ -215,42 +245,30 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
             </header>
 
             <main className="w-full max-w-4xl mx-auto px-4 py-6 space-y-6">
+                {/* GRID DE INFORMAÇÕES COMPONENTIZADA */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 w-full">
-                    <div className="bg-white/5 border border-white/5 p-3 rounded-xl">
-                        <div className="flex items-center gap-2 mb-1">
-                            <Calendar className="size-3 text-primary opacity-60" />
-                            <span className="text-[8px] font-black uppercase text-white/40 tracking-widest">Agenda</span>
-                        </div>
-                        <p className="text-xs font-bold text-white uppercase italic truncate">{DAYS_MAP[group.day]} às {group.time}</p>
-                    </div>
-
-                    <div className="bg-white/5 border border-white/5 p-3 rounded-xl">
-                        <div className="flex items-center gap-2 mb-1">
-                            <MapPin className="size-3 text-primary opacity-60" />
-                            <span className="text-[8px] font-black uppercase text-white/40 tracking-widest">Local</span>
-                        </div>
-                        <p className="text-xs font-bold text-white truncate">{group.location || "Arena"}</p>
-                    </div>
-
-                    <div className="bg-primary/10 border border-primary/20 p-3 rounded-xl shadow-inner">
-                        <div className="flex items-center gap-2 mb-1">
-                            <CircleDollarSign className="size-3 text-primary" />
-                            <span className="text-[8px] font-black uppercase text-primary/80 tracking-widest">Quadra</span>
-                        </div>
-                        <p className="text-xs font-black text-white italic truncate">
-                            R$ {group.courtValue?.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) || "0,00"}
-                        </p>
-                    </div>
-
-                    <div className="bg-emerald-500/10 border border-emerald-500/20 p-3 rounded-xl shadow-inner">
-                        <div className="flex items-center gap-2 mb-1">
-                            <Wallet className="size-3 text-emerald-500" />
-                            <span className="text-[8px] font-black uppercase text-emerald-500/80 tracking-widest">Caixa</span>
-                        </div>
-                        <p className="text-xs font-black text-white italic truncate">
-                            R$ {group.balance?.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) || "0,00"}
-                        </p>
-                    </div>
+                    <InfoCard
+                        label="Agenda"
+                        value={`${DAYS_MAP[group.day]} às ${group.time}`}
+                        icon={Calendar}
+                    />
+                    <InfoCard
+                        label="Local"
+                        value={group.location || "Arena"}
+                        icon={MapPin}
+                    />
+                    <InfoCard
+                        label="Quadra"
+                        value={`R$ ${group.courtValue?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+                        icon={CircleDollarSign}
+                        variant="primary"
+                    />
+                    <InfoCard
+                        label="Caixa"
+                        value={`R$ ${group.balance?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`}
+                        icon={Wallet}
+                        variant="success"
+                    />
                 </div>
 
                 <Tabs defaultValue="matches" className="w-full block">
@@ -284,14 +302,10 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
 
                                     const getStatusConfig = (status: string) => {
                                         switch (status) {
-                                            case 'finished':
-                                                return { label: 'Encerrada', color: 'bg-zinc-500/10 text-zinc-500 border-zinc-500/20' };
-                                            case 'voting_open':
-                                                return { label: 'Votação Aberta', color: 'bg-amber-500/10 text-amber-500 border-amber-500/20 animate-pulse' };
-                                            case 'drawn':
-                                                return { label: 'Sorteada', color: 'bg-blue-500/10 text-blue-400 border-blue-500/20' };
-                                            default:
-                                                return { label: 'Iniciada', color: 'bg-primary/10 text-primary border-primary/20' };
+                                            case 'finished': return { label: 'Encerrada', color: 'bg-zinc-500/10 text-zinc-500 border-zinc-500/20' };
+                                            case 'voting_open': return { label: 'Votação Aberta', color: 'bg-amber-500/10 text-amber-500 border-amber-500/20 animate-pulse' };
+                                            case 'drawn': return { label: 'Sorteada', color: 'bg-blue-500/10 text-blue-400 border-blue-500/20' };
+                                            default: return { label: 'Iniciada', color: 'bg-primary/10 text-primary border-primary/20' };
                                         }
                                     };
 
@@ -300,12 +314,12 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
                                     return (
                                         <Card
                                             key={match.id}
-                                            className="w-full cursor-pointer border-none bg-white/[0.03] active:bg-white/[0.08] transition-all rounded-[1.5rem] group overflow-hidden shadow-lg selection:bg-transparent"
+                                            className="w-full cursor-pointer border-none bg-white/[0.03] active:bg-white/[0.08] transition-all rounded-[1.5rem] group overflow-hidden shadow-lg"
                                             onClick={() => setSelectedMatch(match)}
                                         >
                                             <CardContent className="p-4 flex items-center justify-between">
                                                 <div className="flex items-center gap-4 min-w-0">
-                                                    <div className="size-11 rounded-xl bg-zinc-900 border border-white/5 flex flex-col items-center justify-center shrink-0 shadow-inner">
+                                                    <div className="size-11 rounded-xl bg-zinc-900 border border-white/5 flex flex-col items-center justify-center shrink-0 shadow-inner text-white">
                                                         <span className="text-[10px] font-black text-primary leading-none uppercase">
                                                             {new Date(match.date + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit' })}
                                                         </span>
@@ -358,10 +372,11 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
                 </Tabs>
             </main>
 
+            {/* DIALOGS E MODALS FINAIS */}
             <Dialog open={isMatchModalOpen} onOpenChange={setIsMatchModalOpen}>
                 <DialogContent className="w-[92%] max-w-[425px] bg-[#1a1a1e] border-white/5 rounded-[2.5rem] shadow-3xl text-white px-8 py-10 outline-none">
-                    <DialogHeader className="space-y-3 mb-6">
-                        <DialogTitle className="text-3xl font-black italic uppercase tracking-tighter text-white leading-none">
+                    <DialogHeader className="space-y-3 mb-6 text-white">
+                        <DialogTitle className="text-3xl font-black italic uppercase tracking-tighter leading-none">
                             Agendar <span className="text-primary opacity-90">Rodada</span>
                         </DialogTitle>
                         <DialogDescription className="text-white/30 text-[10px] font-bold uppercase tracking-[0.3em] leading-relaxed">

@@ -12,6 +12,7 @@ import type {AppUser, Group} from "@/lib/auth.ts";
 interface AuthContextType {
   user: AppUser | null;
   isAdmin: boolean;
+  isSuperAdmin: boolean; // ADICIONADO: Para controle global do SaaS
   nomeLista: string | null;
   loading: boolean;
   userGroups: Group[];
@@ -27,6 +28,7 @@ const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AppUser | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false); // ADICIONADO ESTADO
   const [nomeLista, setNomeLista] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [userGroups, setUserGroups] = useState<Group[]>([]);
@@ -41,7 +43,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const groups = groupsSnap.docs.map(d => ({
       id: d.id,
       name: d.data().name
-    }));
+    })) as Group[]; // Cast para garantir tipagem
     setUserGroups(groups);
     if (groups.length > 0 && !activeGroup) setActiveGroup(groups[0]);
   };
@@ -56,16 +58,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         unsubscribeFirestore = onSnapshot(doc(db, 'users', firebaseUser.uid), (docSnap) => {
           if (docSnap.exists()) {
             const data = docSnap.data();
+            // Espalha os dados do Firebase Auth e do Firestore no objeto User
             setUser({ ...firebaseUser, ...data } as AppUser);
+
+            // Sincroniza permissões
             setIsAdmin(data.isAdmin || false);
+            setIsSuperAdmin(data.isSuperAdmin || false); // SINCRONIZAÇÃO DO CAMPO SUPREMO
             setNomeLista(data.nomeLista || null);
           } else {
+            // Caso o documento não exista (primeiro login via Google no sistema)
             setDoc(doc(db, 'users', firebaseUser.uid), {
               uid: firebaseUser.uid,
               email: firebaseUser.email,
               displayName: firebaseUser.displayName,
               photoURL: firebaseUser.photoURL,
               isAdmin: false,
+              isSuperAdmin: false, // Por padrão nasce como false
               nomeLista: null,
               createdAt: new Date()
             });
@@ -76,6 +84,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else {
         setUser(null);
         setIsAdmin(false);
+        setIsSuperAdmin(false); // Reset ao deslogar
         setNomeLista(null);
         setUserGroups([]);
         setActiveGroup(null);
@@ -106,6 +115,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       <AuthContext.Provider value={{
         user,
         isAdmin,
+        isSuperAdmin,
         nomeLista,
         loading,
         userGroups,
