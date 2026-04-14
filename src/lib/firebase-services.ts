@@ -11,7 +11,8 @@ import {
   Timestamp,
   updateDoc,
   where,
-  writeBatch
+  writeBatch,
+  runTransaction // Adicionado para a nova lógica de cupons
 } from 'firebase/firestore';
 import {db} from '@/lib/firebase';
 import type {Player} from "@/lib/types.ts";
@@ -198,64 +199,62 @@ export const PlayerService = {
   }
 };
 
-// --- SERVIÇO DE CUPONS ---
+// --- SERVIÇO DE CUPONS (ATUALIZADO COM EMPILHAMENTO E USO ÚNICO) ---
+
+// --- SERVIÇO DE CUPONS (LIMPO DE WARNINGS) ---
 
 export const CouponService = {
-  async applyCoupon(groupId: string, couponCode: string, currentUser: any) {
-    try {
-      const codeUpper = couponCode.toUpperCase().trim();
-      const couponRef = doc(db, 'coupons', codeUpper);
-      const couponSnap = await getDoc(couponRef);
+  async applyCoupon(userId: string, couponCode: string) {
+    const codeUpper = couponCode.toUpperCase().trim();
+    const couponRef = doc(db, 'coupons', codeUpper);
+    const userRef = doc(db, 'users', userId);
+    const usedCouponRef = doc(db, `users/${userId}/used_coupons`, codeUpper);
 
+    // O try/catch foi removido pois apenas repassava o erro (no-useless-catch)
+    return await runTransaction(db, async (transaction) => {
+      // 1. Validar Cupom
+      const couponSnap = await transaction.get(couponRef);
       if (!couponSnap.exists()) throw new Error("Cupom inválido.");
 
       const couponData = couponSnap.data();
-      const now = new Date();
-
       if (!couponData.active) throw new Error("Cupom inativo.");
-      if (couponData.expiresAt && couponData.expiresAt.toDate() < now) {
-        throw new Error("Cupom expirado.");
+      if (couponData.currentUses >= couponData.maxUses) throw new Error("Limite de usos esgotado.");
+
+      // 2. Validar Uso Único
+      const usedSnap = await transaction.get(usedCouponRef);
+      if (usedSnap.exists()) throw new Error("Você já utilizou este cupom.");
+
+      // 3. Lógica de Empilhamento
+      const userSnap = await transaction.get(userRef);
+      const userData = userSnap.data();
+
+      let startDate = new Date();
+      if (userData?.isPro && userData?.planExpiresAt) {
+        const currentExpiry = new Date(userData.planExpiresAt);
+        if (currentExpiry > startDate) startDate = currentExpiry;
       }
 
-      if (couponData.currentUses >= couponData.maxUses) {
-        throw new Error("Limite de usos deste cupom esgotado.");
-      }
-
-      if (couponData.usedBy && couponData.usedBy.includes(currentUser.uid)) {
-        throw new Error("Você já utilizou este cupom.");
-      }
-
-      const groupRef = doc(db, GROUPS_COLLECTION, groupId);
-      const groupSnap = await getDoc(groupRef);
-      if (!groupSnap.exists()) throw new Error("Grupo não encontrado.");
-
-      const groupData = groupSnap.data();
-
-      const currentExpiry = groupData.expiresAt?.toDate() || new Date();
-      const newExpiry = new Date(currentExpiry);
+      const newExpiry = new Date(startDate);
       newExpiry.setDate(newExpiry.getDate() + couponData.days);
 
-      const batch = writeBatch(db);
-
-      batch.update(groupRef, {
+      // 4. Update
+      transaction.update(userRef, {
         isPro: true,
-        planType: 'coupon',
-        expiresAt: Timestamp.fromDate(newExpiry),
+        planExpiresAt: newExpiry.toISOString(),
         updatedAt: serverTimestamp()
       });
 
-      batch.update(couponRef, {
-        currentUses: (couponData.currentUses || 0) + 1,
-        usedBy: arrayUnion(currentUser.uid)
+      transaction.update(couponRef, {
+        currentUses: (couponData.currentUses || 0) + 1
       });
 
-      await batch.commit();
-      return { success: true, daysAdded: couponData.days };
+      transaction.set(usedCouponRef, {
+        redeemedAt: serverTimestamp(),
+        daysAdded: couponData.days
+      });
 
-    } catch (error: any) {
-      console.error("Erro ao aplicar cupom:", error);
-      throw error;
-    }
+      return { success: true, newExpiry };
+    });
   }
 }
 
@@ -279,7 +278,8 @@ export const joinGroupById = (groupId: string, userId: string, userEmail: string
     GroupService.joinGroupById(groupId, userId, userEmail);
 
 export const updateGroup = (id: string, data: any) => GroupService.updateGroup(id, data);
+
 export const deleteGroup = (id: string) => GroupService.deleteGroupCascade(id);
 
-export const applyCoupon = (groupId: string, code: string, user: any) =>
-    CouponService.applyCoupon(groupId, code, user);
+export const applyCoupon = (userId: string, code: string) =>
+    CouponService.applyCoupon(userId, code);

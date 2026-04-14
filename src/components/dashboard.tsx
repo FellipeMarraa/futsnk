@@ -13,7 +13,8 @@ import {
     Trophy,
     Users,
     Zap,
-    LayoutDashboard // Ícone para o Painel Supremo
+    LayoutDashboard, // Ícone para o Painel Supremo
+    Crown
 } from "lucide-react"
 import {Card, CardContent} from "@/components/ui/card"
 import {Badge} from "@/components/ui/badge"
@@ -37,7 +38,8 @@ import {deleteGroup, getUserGroups, isUserAdmin} from "@/lib/firebase-services.t
 import {useToast} from "@/hooks/use-toast"
 import {PlayerProfileDialog} from "@/components/player-profile-dialog.tsx";
 import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar.tsx";
-import { useNavigate } from "react-router-dom"; // Importado para navegação
+import { useNavigate, useSearchParams } from "react-router-dom";
+import {UpgradePlanModal} from "@/components/upgrade-plan.tsx";
 
 const DAYS_MAP: Record<string, string> = { "0": "Dom", "1": "Seg", "2": "Ter", "3": "Qua", "4": "Qui", "5": "Sex", "6": "Sáb" };
 
@@ -45,9 +47,12 @@ export function Dashboard({ onSelectGroup }: { onSelectGroup: (groupId: string) 
     const { user } = useAuth()
     const { toast } = useToast()
     const navigate = useNavigate(); // Hook para navegar para o painel administrativo
+    const [searchParams, setSearchParams] = useSearchParams();
+
     const [groups, setGroups] = useState<any[]>([])
     const [loading, setLoading] = useState(true)
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+    const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false)
     const [groupToEdit, setGroupToEdit] = useState<any>(null)
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
     const [groupIdToDelete, setGroupIdToDelete] = useState<string | null>(null)
@@ -55,6 +60,18 @@ export function Dashboard({ onSelectGroup }: { onSelectGroup: (groupId: string) 
 
     const [tempNome, setTempNome] = useState("");
     const [isSavingName, setIsSavingName] = useState(false)
+
+    // Efeito para detectar o retorno do Mercado Pago via URL
+    useEffect(() => {
+        const status = searchParams.get("status");
+        if (status === "success") {
+            toast({ title: "UPGRADE CONCLUÍDO! 🏆", description: "Seu plano PRO está sendo ativado." });
+            searchParams.delete("status");
+            setSearchParams(searchParams);
+        } else if (status === "error") {
+            toast({ variant: "destructive", title: "PAGAMENTO NÃO CONCLUÍDO", description: "Houve um problema no checkout." });
+        }
+    }, [searchParams, setSearchParams, toast]);
 
     const fetchGroups = async () => {
         if (!user?.email) {
@@ -168,6 +185,16 @@ export function Dashboard({ onSelectGroup }: { onSelectGroup: (groupId: string) 
                     </div>
 
                     <div className="flex items-center gap-2">
+                        {!user?.isPro && (
+                            <Button
+                                onClick={() => setIsUpgradeModalOpen(true)}
+                                variant="ghost"
+                                className="text-primary text-[9px] font-black uppercase italic gap-2 hover:bg-primary/10 transition-all"
+                            >
+                                <Crown size={14} /> Seja PRO
+                            </Button>
+                        )}
+
                         <Button
                             onClick={() => { setGroupToEdit(null); setIsCreateModalOpen(true); }}
                             className="bg-primary text-black font-black text-[9px] uppercase italic h-8 px-3 rounded-md shadow-[0_0_15px_rgba(234,255,0,0.3)]"
@@ -194,6 +221,15 @@ export function Dashboard({ onSelectGroup }: { onSelectGroup: (groupId: string) 
                                 >
                                     <Star className="size-3.5 mr-2 text-primary fill-primary" /> Meu Perfil
                                 </DropdownMenuItem>
+
+                                {!user?.isPro && (
+                                    <DropdownMenuItem
+                                        onClick={() => setIsUpgradeModalOpen(true)}
+                                        className="font-bold text-[10px] uppercase italic py-2 cursor-pointer gap-2 text-primary hover:bg-primary/5 focus:bg-primary/5"
+                                    >
+                                        <Crown className="size-3.5" /> Assinar PRO
+                                    </DropdownMenuItem>
+                                )}
 
                                 {/* OPÇÃO SECRETA: Somente para o Admin Supremo do Sistema */}
                                 {user?.isSuperAdmin && (
@@ -304,6 +340,8 @@ export function Dashboard({ onSelectGroup }: { onSelectGroup: (groupId: string) 
                 )}
             </main>
 
+            <UpgradePlanModal isOpen={isUpgradeModalOpen} onClose={() => setIsUpgradeModalOpen(false)} />
+
             <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
                 <AlertDialogContent className="bg-card border-white/10 rounded-xl w-[92%] max-w-sm p-6 shadow-2xl">
                     <AlertDialogHeader>
@@ -311,7 +349,7 @@ export function Dashboard({ onSelectGroup }: { onSelectGroup: (groupId: string) 
                         <AlertDialogDescription className="text-white/40 text-[10px] font-bold uppercase tracking-widest leading-relaxed">Esta ação apagará todos os históricos, estatísticas e jogadores deste clube. Esta ação é irreversível.</AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter className="mt-6 flex-row gap-2">
-                        <AlertDialogCancel className="flex-1 bg-white/5 border-none text-white text-[9px] font-black h-10">Abortar</AlertDialogCancel>
+                        <AlertDialogCancel className="flex-1 bg-white/5 border-none text-white text-[9px] font-black h-10 hover:bg-white/10">Abortar</AlertDialogCancel>
                         <AlertDialogAction
                             onClick={() => {
                                 if (groupIdToDelete) {
