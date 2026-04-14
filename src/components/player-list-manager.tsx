@@ -26,16 +26,31 @@ export function PlayerListManager({ groupId }: { groupId: string, currentMatchPl
     const [loading, setLoading] = useState(true)
     const [searchTerm, setSearchTerm] = useState("")
     const [groupIsPro, setGroupIsPro] = useState(false)
+    const [ownerIsPro, setOwnerIsPro] = useState(false)
 
+    // VERIFICAÇÃO BLINDADA DO STATUS PRO
     useEffect(() => {
-        const checkGroupStatus = async () => {
+        const checkGroupAndOwnerStatus = async () => {
             const gDoc = await getDoc(doc(db, "groups", groupId));
             if (gDoc.exists()) {
-                setGroupIsPro(gDoc.data().isPro || false);
+                const groupData = gDoc.data();
+                const markedAsPro = groupData.isPro || false;
+                setGroupIsPro(markedAsPro);
+
+                // Se o grupo é marcado como PRO, precisamos validar se o dono ainda é PRO
+                if (markedAsPro && groupData.ownerId) {
+                    const oDoc = await getDoc(doc(db, "users", groupData.ownerId));
+                    if (oDoc.exists()) {
+                        setOwnerIsPro(oDoc.data().isPro || false);
+                    }
+                }
             }
         };
-        checkGroupStatus();
+        checkGroupAndOwnerStatus();
     }, [groupId]);
+
+    // O status PRO real do grupo depende da assinatura do dono estar ativa
+    const effectivelyGroupIsPro = groupIsPro && ownerIsPro;
 
     useEffect(() => {
         const q = query(collection(db, "groups", groupId, "players_meta"));
@@ -53,7 +68,6 @@ export function PlayerListManager({ groupId }: { groupId: string, currentMatchPl
     useEffect(() => {
         const syncOfficialProfile = async () => {
             if (!user || !user.nomeLista || loading) return;
-
             const officialId = user.uid;
             const myOfficialDoc = playersMetadata.find(p => p.id === officialId);
             const meuNomeOficial: string = user.nomeLista.toLowerCase().trim();
@@ -117,19 +131,11 @@ export function PlayerListManager({ groupId }: { groupId: string, currentMatchPl
                             lastUpdated: serverTimestamp()
                         }, { merge: true });
                     }
-
                     await deleteDoc(doc(db, "groups", groupId, "players_meta", ghostProfile.id));
-
-                    toast({
-                        title: "PERFIL SINCRONIZADO",
-                        description: `O apelido "${ghostProfile.nomeLista}" agora está vinculado à sua conta.`
-                    });
-                } catch (e) {
-                    console.error("Erro na unificação:", e);
-                }
+                    toast({ title: "PERFIL SINCRONIZADO", description: `O apelido "${ghostProfile.nomeLista}" agora está vinculado à sua conta.` });
+                } catch (e) { console.error("Erro na unificação:", e); }
             }
         };
-
         syncOfficialProfile();
     }, [user, playersMetadata, groupId, loading]);
 
@@ -163,8 +169,8 @@ export function PlayerListManager({ groupId }: { groupId: string, currentMatchPl
                     const isMe = player.id === user?.uid;
                     const ovr = calculateOVR(player);
 
-                    // Lógica visual: Se for PRO ou Overseer, o card brilha mais
-                    const showPremiumVisual = groupIsPro || isPro || isSuperAdmin;
+                    // Lógica visual PRO baseada na verificação de dono + status individual
+                    const showPremiumVisual = effectivelyGroupIsPro || isPro || isSuperAdmin;
 
                     return (
                         <Dialog key={player.id}>
@@ -197,7 +203,6 @@ export function PlayerListManager({ groupId }: { groupId: string, currentMatchPl
 
                                 <div className={`relative flex flex-col items-center pt-10 pb-8 px-6 border-t-4 ${isMe ? 'border-primary' : showPremiumVisual ? 'border-primary/40' : 'border-white/10'}`}>
 
-                                    {/* CABEÇALHO DO CARD */}
                                     <div className="absolute top-6 left-6 flex flex-col items-center">
                                         <span className="text-4xl font-black italic text-white leading-none">{ovr}</span>
                                         <span className="text-[10px] font-black text-primary uppercase tracking-widest">OVR</span>
@@ -216,9 +221,8 @@ export function PlayerListManager({ groupId }: { groupId: string, currentMatchPl
 
                                     <h2 className="text-2xl font-black italic uppercase text-white mb-8">{player.nomeLista}</h2>
 
-                                    {/* GRID DE ATRIBUTOS COM TRAVA PRO */}
                                     <div className="w-full grid grid-cols-2 gap-y-6 border-t border-white/5 pt-8 relative">
-                                        {/* Overlay de bloqueio para usuários FREE que não são o próprio jogador */}
+                                        {/* BLOQUEIO REAL-TIME CASO A ASSINATURA DO DONO EXPIRE */}
                                         {!showPremiumVisual && !isMe && !isSuperAdmin && (
                                             <div className="absolute inset-0 z-10 bg-[#1a1a1e]/60 backdrop-blur-[4px] flex flex-col items-center justify-center rounded-xl pt-8">
                                                 <Lock className="size-4 text-primary mb-2" />

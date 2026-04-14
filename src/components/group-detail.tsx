@@ -36,7 +36,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import {useAuth} from "@/contexts/auth-context"
 import {deleteGroup, getGroupById, isUserAdmin} from "@/lib/firebase-services.ts"
-import {collection, onSnapshot, orderBy, query} from "firebase/firestore"
+import {collection, doc, getDoc, onSnapshot, orderBy, query} from "firebase/firestore"
 import {db} from "@/lib/firebase.ts"
 import {MatchManager} from "./match-manager"
 import {MatchDetail} from "./match-detail"
@@ -92,10 +92,11 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
 
     const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+    const [ownerData, setOwnerData] = useState<any>(null);
 
     // Permissão unificada (Dono ou Admin Supremo)
     const userIsAdmin = isUserAdmin(group, user);
-    const isGroupPro = group?.isPro === true;
+    const isGroupPro = (group?.isPro && ownerData?.isPro) || isSuperAdmin;
 
     const latestMatchPlayers = matches.length > 0 ? matches[0].confirmedPlayers || [] : [];
 
@@ -124,11 +125,18 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
     const fetchData = async () => {
         try {
             setLoading(true)
-            const data = await getGroupById(groupId)
+            const data = await getGroupById(groupId) as any;
             if (!data) {
                 setError("Grupo não encontrado")
             } else {
                 setGroup(data)
+
+                if (data.ownerId) {
+                    const ownerSnap = await getDoc(doc(db, "users", data.ownerId));
+                    if (ownerSnap.exists()) {
+                        setOwnerData(ownerSnap.data());
+                    }
+                }
             }
         } catch (err) {
             setError("Erro ao carregar dados")

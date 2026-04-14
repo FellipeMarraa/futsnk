@@ -3,10 +3,27 @@ import { db } from "@/lib/firebase";
 
 export const DrawService = {
     async calculateTeams(groupId: string, presentNames: string[], absentNames: string[]) {
-        // 1. Verificar se o grupo é PRO para decidir a lógica de sorteio
+        // 1. VERIFICAÇÃO BLINDADA: Grupo PRO + Dono Ativo
         const groupRef = doc(db, "groups", groupId);
         const groupSnap = await getDoc(groupRef);
-        const isGroupPro = groupSnap.exists() && (groupSnap.data().isPro || false);
+
+        let isEffectivelyPro = false;
+
+        if (groupSnap.exists()) {
+            const groupData = groupSnap.data();
+            const groupMarkedPro = groupData.isPro || false;
+            const ownerId = groupData.ownerId;
+
+            if (groupMarkedPro && ownerId) {
+                // Buscamos o status real do dono no momento do sorteio
+                const ownerSnap = await getDoc(doc(db, "users", ownerId));
+                if (ownerSnap.exists()) {
+                    const ownerData = ownerSnap.data();
+                    // O racha só é equilibrado se o dono for PRO ou SuperAdmin
+                    isEffectivelyPro = ownerData.isPro === true || ownerData.isSuperAdmin === true;
+                }
+            }
+        }
 
         // 2. Busca metas (players_meta)
         const q = query(collection(db, "groups", groupId, "players_meta"));
@@ -21,7 +38,6 @@ export const DrawService = {
                 (m.aliases || []).some((a: string) => a.toLowerCase().trim() === searchName)
             ) || { technique: 70, speed: 70 };
 
-            // Mantendo seu cálculo de poder original
             return {
                 name,
                 power: (Number(data.technique) * 1.5) + Number(data.speed)
@@ -32,14 +48,13 @@ export const DrawService = {
             teamA: [], teamB: [], teamC: []
         };
 
-        // 3. Processamento dos Jogadores Presentes
-        if (isGroupPro) {
+        // 3. Processamento dos Jogadores Presentes usando a nova trava isEffectivelyPro
+        if (isEffectivelyPro) {
             // --- LÓGICA PRO: EQUILÍBRIO POR PODER ---
             const presentPlayers = presentNames.map(mapPlayer).sort(() => Math.random() - 0.5);
             const sortedPresent = [...presentPlayers].sort((a, b) => b.power - a.power);
 
             sortedPresent.forEach((player, index) => {
-                // Mantendo sua trava de 4 jogadores por time (A e B)
                 if (teams.teamA.length >= 4 && teams.teamB.length >= 4) {
                     teams.teamC.push(player);
                 }
@@ -86,7 +101,7 @@ export const DrawService = {
                 b: finalB.reduce((acc, p) => acc + p.power, 0),
                 c: finalC.reduce((acc, p) => acc + p.power, 0)
             },
-            drawType: isGroupPro ? "pro_balanced" : "free_random"
+            drawType: isEffectivelyPro ? "pro_balanced" : "free_random"
         };
     }
 };

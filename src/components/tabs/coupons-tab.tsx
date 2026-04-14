@@ -5,8 +5,19 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, Plus, Calendar, Users, Ticket, Activity } from "lucide-react"
+import { Loader2, Plus, Calendar, Users, Ticket, Activity, Trash2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { deleteCoupon } from "@/lib/firebase-services"
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 interface CouponsTabProps {
     coupons: any[]
@@ -22,6 +33,9 @@ export function CouponsTab({ coupons, loading, hasMore, onFetchMore, onRefresh, 
     const [form, setForm] = useState({ code: '', days: '30', maxUses: '100' })
     const [isCreating, setIsCreating] = useState(false)
 
+    const [couponToDelete, setCouponToDelete] = useState<string | null>(null)
+    const [isDeleting, setIsDeleting] = useState(false)
+
     const handleCreate = async () => {
         if (!form.code.trim()) {
             toast({ variant: "destructive", title: "CÓDIGO OBRIGATÓRIO" })
@@ -34,7 +48,7 @@ export function CouponsTab({ coupons, loading, hasMore, onFetchMore, onRefresh, 
                 code,
                 days: Number(form.days),
                 maxUses: Number(form.maxUses),
-                currentUses: 0,
+                usedCount: 0, // CORRIGIDO: de currentUses para usedCount
                 usedBy: [],
                 active: true,
                 createdAt: serverTimestamp(),
@@ -50,6 +64,21 @@ export function CouponsTab({ coupons, loading, hasMore, onFetchMore, onRefresh, 
         }
     }
 
+    const handleDeleteConfirm = async () => {
+        if (!couponToDelete) return
+        setIsDeleting(true)
+        try {
+            await deleteCoupon(couponToDelete)
+            toast({ title: "CUPOM REMOVIDO" })
+            onRefresh()
+        } catch (e) {
+            toast({ variant: "destructive", title: "ERRO AO DELETAR" })
+        } finally {
+            setIsDeleting(false)
+            setCouponToDelete(null)
+        }
+    }
+
     return (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-in fade-in duration-500">
             {/* Formulário de Criação */}
@@ -60,7 +89,6 @@ export function CouponsTab({ coupons, loading, hasMore, onFetchMore, onRefresh, 
                     </CardTitle>
                 </CardHeader>
                 <CardContent className="p-6 space-y-6">
-                    {/* Código do Cupom */}
                     <div className="space-y-2">
                         <label className="text-[10px] font-black uppercase text-white/40 flex items-center gap-2">
                             <Ticket size={12} className="text-primary" /> Identificador do Cupom
@@ -74,7 +102,6 @@ export function CouponsTab({ coupons, loading, hasMore, onFetchMore, onRefresh, 
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
-                        {/* Dias de Benefício */}
                         <div className="space-y-2">
                             <label className="text-[10px] font-black uppercase text-white/40 flex items-center gap-2">
                                 <Calendar size={12} className="text-primary" /> Dias PRO
@@ -89,7 +116,6 @@ export function CouponsTab({ coupons, loading, hasMore, onFetchMore, onRefresh, 
                             <p className="text-[8px] text-white/20 font-bold uppercase tracking-tighter">Tempo de acesso</p>
                         </div>
 
-                        {/* Limite de Usos */}
                         <div className="space-y-2">
                             <label className="text-[10px] font-black uppercase text-white/40 flex items-center gap-2">
                                 <Users size={12} className="text-primary" /> Limite Usos
@@ -130,7 +156,7 @@ export function CouponsTab({ coupons, loading, hasMore, onFetchMore, onRefresh, 
                                 <th className="px-6 py-4">Código</th>
                                 <th className="px-6 py-4 text-center">Dias PRO</th>
                                 <th className="px-6 py-4 text-center">Engajamento</th>
-                                <th className="px-6 py-4 text-right">Status</th>
+                                <th className="px-6 py-4 text-right">Ações</th>
                             </tr>
                             </thead>
                             <tbody className="divide-y divide-white/5">
@@ -147,19 +173,28 @@ export function CouponsTab({ coupons, loading, hasMore, onFetchMore, onRefresh, 
                                     </td>
                                     <td className="px-6 py-4 text-center">
                                         <div className="flex flex-col gap-1 items-center">
-                                            <span className="text-white/60">{cp.currentUses} / {cp.maxUses}</span>
+                                            {/* CORRIGIDO: de cp.currentUses para cp.usedCount */}
+                                            <span className="text-white/60">{(cp.usedCount || 0)} / {cp.maxUses}</span>
                                             <div className="w-16 h-1 bg-white/5 rounded-full overflow-hidden">
                                                 <div
-                                                    className="h-full bg-primary"
-                                                    style={{ width: `${Math.min((cp.currentUses / cp.maxUses) * 100, 100)}%` }}
+                                                    className="h-full bg-primary transition-all duration-500"
+                                                    style={{ width: `${Math.min(((cp.usedCount || 0) / cp.maxUses) * 100, 100)}%` }}
                                                 />
                                             </div>
                                         </div>
                                     </td>
                                     <td className="px-6 py-4 text-right">
-                                        <Badge className="bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 px-2 font-black italic">
-                                            ATIVO
-                                        </Badge>
+                                        <div className="flex items-center justify-end gap-3">
+                                            <Badge className="bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 px-2 font-black italic text-[9px]">
+                                                ATIVO
+                                            </Badge>
+                                            <button
+                                                onClick={() => setCouponToDelete(cp.code)}
+                                                className="p-2 hover:bg-red-500/20 text-white/20 hover:text-red-400 transition-all rounded-lg outline-none"
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             ))}
@@ -178,6 +213,30 @@ export function CouponsTab({ coupons, loading, hasMore, onFetchMore, onRefresh, 
                     </Button>
                 )}
             </div>
+
+            {/* AlertDialog */}
+            <AlertDialog open={!!couponToDelete} onOpenChange={(open) => !open && setCouponToDelete(null)}>
+                <AlertDialogContent className="bg-[#1a1a1e] border-white/10 text-white rounded-[2rem]">
+                    <AlertDialogHeader>
+                        <AlertDialogTitle className="text-xl font-black italic uppercase">Eliminar Cupom?</AlertDialogTitle>
+                        <AlertDialogDescription className="text-white/40 text-[11px] font-bold uppercase tracking-widest leading-relaxed">
+                            Esta ação removerá o código <span className="text-primary">{couponToDelete}</span> permanentemente da base de dados.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter className="mt-6 flex gap-3">
+                        <AlertDialogCancel className="flex-1 bg-white/5 border-none text-white font-black uppercase italic text-[10px] h-12 rounded-xl hover:bg-white/10 transition-colors">
+                            Abortar
+                        </AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={handleDeleteConfirm}
+                            disabled={isDeleting}
+                            className="flex-1 bg-red-600 text-white font-black uppercase italic text-[10px] h-12 rounded-xl hover:bg-red-700 transition-colors border-none"
+                        >
+                            {isDeleting ? <Loader2 className="size-4 animate-spin" /> : "Confirmar Exclusão"}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     )
 }
