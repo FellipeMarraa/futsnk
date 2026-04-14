@@ -55,6 +55,7 @@ export const GroupService = {
     userEmail: string;
     courtValue?: number;
     balance?: number;
+    isPro?: boolean; // Adicione este campo se não tiver
   }) {
     try {
       const groupRef = await addDoc(collection(db, GROUPS_COLLECTION), {
@@ -69,18 +70,16 @@ export const GroupService = {
         membersEmails: [groupData.userEmail.toLowerCase()],
         admins: [groupData.userId],
         adminsEmails: [groupData.userEmail.toLowerCase()],
-        ownerId: groupData.userId,
-        isPro: false,
-        planType: 'free',
-        expiresAt: null,
+        ownerId: groupData.userId, // O userId vira o ownerId aqui
+        isPro: groupData.isPro || false,
+        planType: groupData.isPro ? 'pro' : 'free',
         status: 'active',
-        players: [],
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
       return groupRef.id;
     } catch (error) {
-      console.error("Erro ao criar grupo completo:", error);
+      console.error("Erro ao criar grupo:", error);
       throw error;
     }
   },

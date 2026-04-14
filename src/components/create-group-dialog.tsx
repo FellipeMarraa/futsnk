@@ -74,7 +74,6 @@ export function CreateGroupDialog({ isOpen, onClose, onSuccess, groupToEdit }: C
 
         const playersCount = Number(maxPlayers);
 
-        // NOVA REGRA: FREE até 20 atletas. PRO ilimitado.
         if (!isPro && !isSuperAdmin && playersCount > 20) {
             toast({
                 variant: "destructive",
@@ -86,33 +85,35 @@ export function CreateGroupDialog({ isOpen, onClose, onSuccess, groupToEdit }: C
 
         setLoading(true)
         try {
-            const selectedDayLabel = DAYS_OF_WEEK.find(d => d.value === day)?.label || "Sábado"
             const finalTime = `${hour}:${minute}`
 
-            const payload = {
-                name,
-                day: day,
-                dayLabel: selectedDayLabel,
-                time: finalTime,
-                location,
-                maxPlayers: playersCount,
-                courtValue: courtValue === "" ? 0 : Number(courtValue),
-                balance: balance === "" ? 0 : Number(balance),
-
-                ownerId: user.uid,
-                isPro: isPro || isSuperAdmin,
-                planType: (isPro || isSuperAdmin) ? "pro" : "free",
-                status: "active",
-                membersCount: 1,
-                createdAt: groupToEdit ? groupToEdit.createdAt : new Date(),
-            }
-
             if (groupToEdit) {
-                const editPayload = { ...payload, isPro: groupToEdit.isPro, planType: groupToEdit.planType };
+                // Lógica de Edição
+                const editPayload = {
+                    name,
+                    day,
+                    time: finalTime,
+                    location,
+                    maxPlayers: playersCount,
+                    courtValue: courtValue === "" ? 0 : Number(courtValue),
+                    balance: balance === "" ? 0 : Number(balance),
+                }
                 await updateGroup(groupToEdit.id, editPayload)
                 toast({ title: "DADOS ATUALIZADOS" })
             } else {
-                await createGroupFull({ ...payload, userId: user.uid, userEmail: user.email! })
+                // Lógica de Criação - Passando exatamente o que o serviço espera
+                await createGroupFull({
+                    name,
+                    day,
+                    time: finalTime,
+                    location,
+                    maxPlayers: playersCount,
+                    courtValue: courtValue === "" ? 0 : Number(courtValue),
+                    balance: balance === "" ? 0 : Number(balance),
+                    userId: user.uid,
+                    userEmail: user.email!,
+                    isPro: isPro || isSuperAdmin // Passando a info de status pro
+                })
                 toast({ title: "CLUBE FUNDADO" })
             }
             onSuccess()
