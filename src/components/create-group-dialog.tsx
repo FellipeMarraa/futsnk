@@ -1,25 +1,13 @@
-import { useState, useEffect } from "react"
-import { useAuth } from "@/contexts/auth-context"
-import { updateGroup, createGroupFull } from "@/lib/firebase-services.ts"
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogHeader,
-    DialogTitle,
-} from "@/components/ui/dialog"
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Loader2, Trophy, Users, MapPin, CircleDollarSign, Wallet } from "lucide-react"
-import { useToast } from "@/hooks/use-toast"
+import {useEffect, useState} from "react"
+import {useAuth} from "@/contexts/auth-context"
+import {createGroupFull, updateGroup} from "@/lib/firebase-services.ts"
+import {Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,} from "@/components/ui/dialog"
+import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue,} from "@/components/ui/select"
+import {Button} from "@/components/ui/button"
+import {Input} from "@/components/ui/input"
+import {Label} from "@/components/ui/label"
+import {CircleDollarSign, Crown, Loader2, MapPin, Trophy, Users, Wallet, Lock, Zap} from "lucide-react"
+import {useToast} from "@/hooks/use-toast"
 
 interface CreateGroupDialogProps {
     isOpen: boolean
@@ -42,7 +30,7 @@ const HOURS = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0')
 const MINUTES = ["00", "15", "30", "45"];
 
 export function CreateGroupDialog({ isOpen, onClose, onSuccess, groupToEdit }: CreateGroupDialogProps) {
-    const { user } = useAuth()
+    const { user, isPro, isSuperAdmin } = useAuth()
     const { toast } = useToast()
     const [loading, setLoading] = useState(false)
 
@@ -51,7 +39,7 @@ export function CreateGroupDialog({ isOpen, onClose, onSuccess, groupToEdit }: C
     const [hour, setHour] = useState("10")
     const [minute, setMinute] = useState("00")
     const [location, setLocation] = useState("")
-    const [maxPlayers, setMaxPlayers] = useState("20")
+    const [maxPlayers, setMaxPlayers] = useState("20") // Padrão agora é 20
     const [courtValue, setCourtValue] = useState("")
     const [balance, setBalance] = useState("")
 
@@ -64,7 +52,6 @@ export function CreateGroupDialog({ isOpen, onClose, onSuccess, groupToEdit }: C
             setMinute(m || "00")
             setLocation(groupToEdit.location || "")
             setMaxPlayers(String(groupToEdit.maxPlayers || "20"))
-            // CORREÇÃO AQUI: Preencher os campos com os dados existentes do banco
             setCourtValue(groupToEdit.courtValue !== undefined ? String(groupToEdit.courtValue) : "")
             setBalance(groupToEdit.balance !== undefined ? String(groupToEdit.balance) : "")
         } else if (!groupToEdit && isOpen) {
@@ -84,6 +71,19 @@ export function CreateGroupDialog({ isOpen, onClose, onSuccess, groupToEdit }: C
             toast({ variant: "destructive", title: "NOME OBRIGATÓRIO" })
             return
         }
+
+        const playersCount = Number(maxPlayers);
+
+        // NOVA REGRA: FREE até 20 atletas. PRO ilimitado.
+        if (!isPro && !isSuperAdmin && playersCount > 20) {
+            toast({
+                variant: "destructive",
+                title: "LIMITE EXCEDIDO",
+                description: "Clubes FREE suportam até 20 atletas. Assine o PRO para ilimitado."
+            })
+            return
+        }
+
         setLoading(true)
         try {
             const selectedDayLabel = DAYS_OF_WEEK.find(d => d.value === day)?.label || "Sábado"
@@ -95,20 +95,21 @@ export function CreateGroupDialog({ isOpen, onClose, onSuccess, groupToEdit }: C
                 dayLabel: selectedDayLabel,
                 time: finalTime,
                 location,
-                maxPlayers: Number(maxPlayers),
+                maxPlayers: playersCount,
                 courtValue: courtValue === "" ? 0 : Number(courtValue),
                 balance: balance === "" ? 0 : Number(balance),
 
                 ownerId: user.uid,
-                isPro: false,
-                planType: "free",
+                isPro: isPro || isSuperAdmin,
+                planType: (isPro || isSuperAdmin) ? "pro" : "free",
                 status: "active",
                 membersCount: 1,
-                createdAt: new Date(),
+                createdAt: groupToEdit ? groupToEdit.createdAt : new Date(),
             }
 
             if (groupToEdit) {
-                await updateGroup(groupToEdit.id, payload)
+                const editPayload = { ...payload, isPro: groupToEdit.isPro, planType: groupToEdit.planType };
+                await updateGroup(groupToEdit.id, editPayload)
                 toast({ title: "DADOS ATUALIZADOS" })
             } else {
                 await createGroupFull({ ...payload, userId: user.uid, userEmail: user.email! })
@@ -129,13 +130,23 @@ export function CreateGroupDialog({ isOpen, onClose, onSuccess, groupToEdit }: C
             <DialogContent className="w-[92%] max-w-[400px] bg-[#1a1a1e] border border-white/5 rounded-[2rem] shadow-2xl p-6 sm:p-8 max-h-[90vh] overflow-y-auto custom-scrollbar">
 
                 <DialogHeader className="pb-2">
-                    <DialogTitle className="text-lg font-black italic uppercase tracking-tighter text-white flex items-center gap-2">
-                        <Trophy className="size-4 text-primary" />
-                        {groupToEdit ? "Editar Clube" : "Novo Clube"}
-                    </DialogTitle>
-                    <DialogDescription className="text-white/30 text-[9px] font-bold uppercase tracking-[0.2em]">
-                        Configurações da Temporada
-                    </DialogDescription>
+                    <div className="flex justify-between items-start">
+                        <div>
+                            <DialogTitle className="text-lg font-black italic uppercase tracking-tighter text-white flex items-center gap-2">
+                                <Trophy className="size-4 text-primary" />
+                                {groupToEdit ? "Editar Clube" : "Novo Clube"}
+                            </DialogTitle>
+                            <DialogDescription className="text-white/30 text-[9px] font-bold uppercase tracking-[0.2em]">
+                                Configurações da Temporada
+                            </DialogDescription>
+                        </div>
+                        {(isPro || isSuperAdmin) && !groupToEdit && (
+                            <div className="bg-primary/10 border border-primary/20 px-2 py-1 rounded-lg flex items-center gap-1">
+                                <Crown className="size-3 text-primary" />
+                                <span className="text-[8px] font-black text-primary uppercase">PRO</span>
+                            </div>
+                        )}
+                    </div>
                 </DialogHeader>
 
                 <div className="space-y-4 py-4">
@@ -234,12 +245,24 @@ export function CreateGroupDialog({ isOpen, onClose, onSuccess, groupToEdit }: C
                     </div>
 
                     <div className="space-y-1.5">
-                        <Label className="text-[9px] font-black uppercase text-white/40 ml-1">Limite de Atletas</Label>
+                        <div className="flex justify-between items-center ml-1">
+                            <Label className="text-[9px] font-black uppercase text-white/40">Limite de Atletas</Label>
+                            {!isPro && !isSuperAdmin && (
+                                <span className="text-[7px] font-black text-primary uppercase flex items-center gap-1">
+                                    <Lock size={8} /> Máx 20 (FREE)
+                                </span>
+                            )}
+                            {(isPro || isSuperAdmin) && (
+                                <span className="text-[7px] font-black text-emerald-400 uppercase flex items-center gap-1">
+                                    <Zap size={8} className="fill-emerald-400" /> ILIMITADO (PRO)
+                                </span>
+                            )}
+                        </div>
                         <div className="relative">
                             <Users className="absolute left-3.5 top-1/2 -translate-y-1/2 size-3.5 text-primary opacity-30" />
                             <Input
                                 type="number"
-                                className="bg-white/[0.03] border-white/10 rounded-xl h-11 pl-10 text-sm font-bold text-white focus:border-primary/40 focus:ring-0"
+                                className={`bg-white/[0.03] border-white/10 rounded-xl h-11 pl-10 text-sm font-bold text-white focus:border-primary/40 focus:ring-0 ${!isPro && !isSuperAdmin && Number(maxPlayers) > 20 ? 'border-red-500/50' : ''}`}
                                 value={maxPlayers}
                                 onChange={(e) => setMaxPlayers(e.target.value)}
                             />

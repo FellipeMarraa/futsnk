@@ -1,17 +1,20 @@
+"use client"
+
 import { useEffect, useState } from "react"
 import { db } from "@/lib/firebase"
-import { collection, doc, getDoc, getDocs, limit, query, updateDoc } from "firebase/firestore"
+import { collection, doc, getDoc, getDocs, limit, query, updateDoc, serverTimestamp } from "firebase/firestore"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { ChevronDown, Clock, Shield, Star, Target, TrendingUp, Zap, ChevronUp, Minus, AlertCircle, Ticket, Loader2, Crown, Pencil, Check, X } from "lucide-react"
+import { ChevronDown, Clock, Shield, Star, Target, TrendingUp, Zap, ChevronUp, Minus, AlertCircle, Ticket, Loader2, Crown, Pencil, Check, X, Lock } from "lucide-react"
 import * as VisuallyHidden from "@radix-ui/react-visually-hidden"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { applyCoupon } from "@/lib/firebase-services.ts"
 import { useToast } from "@/hooks/use-toast"
+import { useAuth } from "@/contexts/auth-context"
 
-export function PlayerProfileDialog({ isOpen, onClose, user, initialGroupId, allGroups }: {
+export function PlayerProfileDialog({ isOpen, onClose, user: propUser, initialGroupId, allGroups }: {
     isOpen: boolean,
     onClose: () => void,
     user: any,
@@ -19,6 +22,8 @@ export function PlayerProfileDialog({ isOpen, onClose, user, initialGroupId, all
     allGroups: any[]
 }) {
     const { toast } = useToast()
+    const { isPro: userIsPro, isSuperAdmin } = useAuth() // Status PRO global do usuário
+
     const [activeGroupId, setActiveGroupId] = useState(initialGroupId);
     const [stats, setStats] = useState<any>(null)
     const [lastMatchStats, setLastMatchStats] = useState<any>(null)
@@ -31,12 +36,14 @@ export function PlayerProfileDialog({ isOpen, onClose, user, initialGroupId, all
 
     // Estados para Edição de Nome
     const [isEditingName, setIsEditingName] = useState(false)
-    const [newName, setNewName] = useState(user?.nomeLista || "")
+    const [newName, setNewName] = useState(propUser?.nomeLista || "")
     const [isSavingName, setIsSavingName] = useState(false)
 
     const activeGroup = allGroups.find(g => g.id === activeGroupId);
     const activeGroupName = activeGroup?.name || "Clube";
-    const isPro = activeGroup?.isPro || false;
+
+    // Benefício PRO: Ativo se o USUÁRIO é PRO ou se o CLUBE atual é PRO
+    const hasProAccess = userIsPro || activeGroup?.isPro || isSuperAdmin;
 
     const showGroupSelector = allGroups.length > 1;
 
@@ -45,28 +52,30 @@ export function PlayerProfileDialog({ isOpen, onClose, user, initialGroupId, all
             setShowCouponInput(false);
             setCouponCode("");
             setIsEditingName(false);
-            setNewName(user?.nomeLista || "");
+            setNewName(propUser?.nomeLista || "");
             if (initialGroupId) setActiveGroupId(initialGroupId);
         }
-    }, [isOpen, initialGroupId, user]);
+    }, [isOpen, initialGroupId, propUser]);
 
     useEffect(() => {
-        if (!isOpen || !user?.uid || !activeGroupId) return;
+        if (!isOpen || !propUser?.uid || !activeGroupId) return;
 
         const fetchPlayerData = async () => {
             setLoading(true)
             try {
-                const metaRef = doc(db, "groups", activeGroupId, "players_meta", user.uid);
+                const metaRef = doc(db, "groups", activeGroupId, "players_meta", propUser.uid);
                 const metaSnap = await getDoc(metaRef);
 
                 let data = null;
                 if (metaSnap.exists()) {
                     data = metaSnap.data();
                 } else {
-                    const nomeBusca = user.nomeLista?.toLowerCase().trim() || "";
-                    const ghostRef = doc(db, "groups", activeGroupId, "players_meta", nomeBusca);
-                    const ghostSnap = await getDoc(ghostRef);
-                    if (ghostSnap.exists()) data = ghostSnap.data();
+                    const nomeBusca = propUser.nomeLista?.toLowerCase().trim() || "";
+                    // Fallback para buscar por nome se o UID não estiver vinculado no grupo
+                    const playersRef = collection(db, "groups", activeGroupId, "players_meta");
+                    const pSnap = await getDocs(playersRef);
+                    const ghost = pSnap.docs.find(d => d.data().nomeLista?.toLowerCase().trim() === nomeBusca);
+                    if (ghost) data = ghost.data();
                 }
                 setStats(data);
 
@@ -84,7 +93,7 @@ export function PlayerProfileDialog({ isOpen, onClose, user, initialGroupId, all
                     const ratingsSnap = await getDocs(ratingsCol);
 
                     const sums = { technique: 0, speed: 0, finishing: 0, defense: 0, count: 0 };
-                    const myNameNormalized = user.nomeLista?.toLowerCase().trim() || "";
+                    const myNameNormalized = propUser.nomeLista?.toLowerCase().trim() || "";
 
                     ratingsSnap.forEach(rDoc => {
                         const rData = rDoc.data().ratings;
@@ -126,20 +135,21 @@ export function PlayerProfileDialog({ isOpen, onClose, user, initialGroupId, all
         }
 
         fetchPlayerData();
-    }, [isOpen, user, activeGroupId]);
+    }, [isOpen, propUser, activeGroupId]);
 
     const handleUpdateName = async () => {
-        if (!newName.trim() || newName === user.nomeLista) {
+        if (!newName.trim() || newName === propUser.nomeLista) {
             setIsEditingName(false);
             return;
         }
 
         setIsSavingName(true);
         try {
-            const userRef = doc(db, "users", user.uid);
+            const userRef = doc(db, "users", propUser.uid);
             await updateDoc(userRef, {
                 nomeLista: newName.trim(),
-                displayName: newName.trim()
+                displayName: newName.trim(),
+                updatedAt: serverTimestamp()
             });
             toast({ title: "NOME ATUALIZADO" });
             setIsEditingName(false);
@@ -152,17 +162,14 @@ export function PlayerProfileDialog({ isOpen, onClose, user, initialGroupId, all
 
     const handleApplyCoupon = async () => {
         if (!couponCode.trim()) return;
-        if (!activeGroupId) {
-            toast({ variant: "destructive", title: "ERRO", description: "Selecione um clube para aplicar o cupom." });
-            return;
-        }
 
         setIsApplying(true);
         try {
-            const result = await applyCoupon(activeGroupId, couponCode, user);
+            // Aplicamos o cupom ao UID do usuário (SaaS focado no usuário)
+            const result = await applyCoupon(propUser.uid, couponCode);
             toast({
-                title: "CUPOM APLICADO!",
-                description: `+${result.daysAdded} dias de acesso PRO.`
+                title: "CUPOM ATIVADO! 🎉",
+                description: `Sua conta agora é PRO até ${new Date(result.newExpiry).toLocaleDateString()}.`
             });
             setCouponCode("");
             setShowCouponInput(false);
@@ -170,7 +177,7 @@ export function PlayerProfileDialog({ isOpen, onClose, user, initialGroupId, all
             toast({
                 variant: "destructive",
                 title: "ERRO NO CUPOM",
-                description: e.message || "Código inválido."
+                description: e.message || "Código inválido ou já utilizado."
             });
         } finally {
             setIsApplying(false);
@@ -198,7 +205,7 @@ export function PlayerProfileDialog({ isOpen, onClose, user, initialGroupId, all
                 </VisuallyHidden.Root>
 
                 <div className="relative pt-12 pb-8 px-6 flex flex-col items-center">
-                    <div className="absolute top-0 inset-x-0 h-32 bg-gradient-to-b from-primary/20 to-transparent pointer-events-none" />
+                    <div className={`absolute top-0 inset-x-0 h-32 bg-gradient-to-b ${hasProAccess ? 'from-primary/20' : 'from-white/5'} to-transparent pointer-events-none transition-all duration-700`} />
 
                     {/* SELETOR DE GRUPO */}
                     <div className="absolute top-8 right-8 z-20">
@@ -230,16 +237,16 @@ export function PlayerProfileDialog({ isOpen, onClose, user, initialGroupId, all
 
                     {/* OVR DISPLAY */}
                     <div className="absolute top-8 left-8 flex flex-col items-center">
-                        <span className="text-4xl font-black italic text-white tracking-tighter leading-none">
+                        <span className={`text-4xl font-black italic tracking-tighter leading-none transition-colors ${hasProAccess ? 'text-primary' : 'text-white'}`}>
                             {calculateOVR(stats)}
                         </span>
                         <span className="text-[10px] font-black text-primary uppercase tracking-widest">OVR</span>
                     </div>
 
-                    <Avatar className="size-32 border-4 border-primary/30 shadow-[0_0_40px_rgba(234,255,0,0.15)] mb-4 bg-zinc-900">
-                        <AvatarImage src={user?.photoURL} className="object-cover" />
+                    <Avatar className={`size-32 border-4 mb-4 bg-zinc-900 transition-all duration-500 ${hasProAccess ? 'border-primary shadow-[0_0_40px_rgba(234,255,0,0.2)]' : 'border-white/10'}`}>
+                        <AvatarImage src={propUser?.photoURL} className="object-cover" />
                         <AvatarFallback className="bg-zinc-800 text-white font-black text-5xl italic uppercase">
-                            {user?.nomeLista?.[0] || "U"}
+                            {propUser?.nomeLista?.[0] || "U"}
                         </AvatarFallback>
                     </Avatar>
 
@@ -263,7 +270,7 @@ export function PlayerProfileDialog({ isOpen, onClose, user, initialGroupId, all
                         ) : (
                             <div className="flex items-center gap-2 group cursor-pointer" onClick={() => setIsEditingName(true)}>
                                 <h2 className="text-2xl font-black italic uppercase text-white tracking-tighter leading-none">
-                                    {user?.nomeLista}
+                                    {propUser?.nomeLista}
                                 </h2>
                                 <Pencil className="size-3 text-white/20 group-hover:text-primary transition-colors" />
                             </div>
@@ -271,10 +278,10 @@ export function PlayerProfileDialog({ isOpen, onClose, user, initialGroupId, all
                     </div>
 
                     <div className="mb-8">
-                        {isPro ? (
-                            <div className="flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/20 px-3 py-1 rounded-full">
-                                <Crown className="size-2.5 text-amber-500 fill-amber-500" />
-                                <span className="text-[8px] font-black text-amber-500 uppercase tracking-widest">Membro Pro</span>
+                        {hasProAccess ? (
+                            <div className="flex items-center gap-1.5 bg-primary/10 border border-primary/20 px-3 py-1 rounded-full animate-pulse">
+                                <Crown className="size-2.5 text-primary fill-primary" />
+                                <span className="text-[8px] font-black text-primary uppercase tracking-widest">Acesso Elite Ativado</span>
                             </div>
                         ) : (
                             <p className="text-[9px] font-bold text-white/30 uppercase tracking-[0.4em]">
@@ -284,7 +291,15 @@ export function PlayerProfileDialog({ isOpen, onClose, user, initialGroupId, all
                     </div>
 
                     {/* ATRIBUTOS */}
-                    <div className="w-full grid grid-cols-2 gap-2 mb-8">
+                    <div className="w-full grid grid-cols-2 gap-2 mb-8 relative">
+                        {!hasProAccess && (
+                            <div className="absolute inset-0 z-10 bg-black/40 backdrop-blur-[2px] rounded-xl flex items-center justify-center border border-white/5">
+                                <div className="flex flex-col items-center gap-1">
+                                    <Lock className="size-4 text-primary opacity-50" />
+                                    <span className="text-[7px] font-black text-primary uppercase tracking-tighter">Atributos PRO</span>
+                                </div>
+                            </div>
+                        )}
                         <AttributeItem label="Técnica" value={stats?.technique} lastRoundValue={lastMatchStats?.technique} icon={<TrendingUp className="size-3" />} />
                         <AttributeItem label="Chute" value={stats?.finishing} lastRoundValue={lastMatchStats?.finishing} icon={<Target className="size-3" />} />
                         <AttributeItem label="Velocidade" value={stats?.speed} lastRoundValue={lastMatchStats?.speed} icon={<Zap className="size-3" />} />
@@ -292,7 +307,14 @@ export function PlayerProfileDialog({ isOpen, onClose, user, initialGroupId, all
                     </div>
 
                     {/* ÚLTIMA ATUAÇÃO */}
-                    <div className="w-full bg-white/[0.03] rounded-[2rem] p-5 border border-white/5 shadow-inner mb-6">
+                    <div className="w-full bg-white/[0.03] rounded-[2rem] p-5 border border-white/5 shadow-inner mb-6 relative overflow-hidden">
+                        {!hasProAccess && (
+                            <div className="absolute inset-0 z-10 bg-black/60 backdrop-blur-[4px] flex flex-col items-center justify-center text-center p-4">
+                                <Crown className="size-6 text-primary mb-2 opacity-50" />
+                                <h5 className="text-[9px] font-black text-white uppercase italic">Raio-X Bloqueado</h5>
+                                <p className="text-[7px] text-white/40 uppercase font-bold mt-1">Disponível apenas em Clubes PRO</p>
+                            </div>
+                        )}
                         <div className="flex items-center justify-between mb-4">
                             <h4 className="text-[9px] font-black text-white/40 uppercase tracking-[0.2em] flex items-center gap-2">
                                 <Clock className="size-3 text-primary" /> Última Atuação
@@ -320,7 +342,7 @@ export function PlayerProfileDialog({ isOpen, onClose, user, initialGroupId, all
                         )}
                     </div>
 
-                    {/* SEÇÃO DE CUPOM - SEMPRE VISÍVEL */}
+                    {/* SEÇÃO DE CUPOM */}
                     <div className="w-full border-t border-white/5 pt-6 text-center">
                         {!showCouponInput ? (
                             <button
@@ -340,7 +362,7 @@ export function PlayerProfileDialog({ isOpen, onClose, user, initialGroupId, all
                                         placeholder="CÓDIGO"
                                         value={couponCode}
                                         onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
-                                        className="h-10 bg-white/5 border-white/10 rounded-xl text-[10px] font-bold tracking-[0.2em] focus:ring-1 focus:ring-primary/50 uppercase"
+                                        className="h-10 bg-white/5 border-white/10 rounded-xl text-[10px] font-bold tracking-[0.2em] focus:ring-1 focus:ring-primary/50 uppercase text-white"
                                         autoFocus
                                     />
                                     <Button

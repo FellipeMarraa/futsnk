@@ -1,41 +1,56 @@
-import { useEffect, useState } from "react";
-import { db } from "@/lib/firebase";
-import { collection, doc, onSnapshot, query, serverTimestamp, setDoc } from "firebase/firestore";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Plus, ShieldCheck, Trash2, Search } from "lucide-react";
-import { toast } from "@/hooks/use-toast";
+import {useEffect, useState} from "react";
+import {db} from "@/lib/firebase";
+import {collection, doc, getDoc, onSnapshot, query, serverTimestamp, setDoc} from "firebase/firestore";
+import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar";
+import {Button} from "@/components/ui/button";
+import {Input} from "@/components/ui/input";
+import {Badge} from "@/components/ui/badge";
+import {Crown, Lock, Plus, Search, ShieldCheck, Trash2} from "lucide-react";
+import {toast} from "@/hooks/use-toast";
+import {useAuth} from "@/contexts/auth-context";
 
 interface PlayerMeta {
     id: string;
     nomeLista: string;
     userId?: string;
-    aliases?: string[]; // Tornamos opcional para evitar erros de leitura
+    aliases?: string[];
     photoURL?: string;
 }
 
 export function AdminPlayerManager({ groupId }: { groupId: string }) {
+    const { isSuperAdmin, isPro } = useAuth();
     const [players, setPlayers] = useState<PlayerMeta[]>([]);
     const [newAlias, setNewAlias] = useState<{ [key: string]: string }>({});
     const [searchTerm, setSearchTerm] = useState("");
+    const [groupIsPro, setGroupIsPro] = useState(false);
+    const [loading, setLoading] = useState(true);
+
+    // 1. Verificar se o grupo é PRO para liberar para os membros/admin local
+    useEffect(() => {
+        const checkGroupStatus = async () => {
+            const gDoc = await getDoc(doc(db, "groups", groupId));
+            if (gDoc.exists()) {
+                setGroupIsPro(gDoc.data().isPro || false);
+            }
+        };
+        checkGroupStatus();
+    }, [groupId]);
 
     useEffect(() => {
         const q = query(collection(db, "groups", groupId, "players_meta"));
-        return onSnapshot(q, (snap) => {
+        const unsubscribe = onSnapshot(q, (snap) => {
             const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as PlayerMeta));
             setPlayers(data);
+            setLoading(false);
         });
+        return () => unsubscribe();
     }, [groupId]);
 
     const addAlias = async (player: PlayerMeta) => {
         const aliasValue = newAlias[player.id]?.toLowerCase().trim();
         if (!aliasValue) return;
 
-        // CORREÇÃO DO ERRO: Garantimos que aliases seja um array antes de testar o includes
         const currentAliases = player.aliases ?? [];
-
         if (currentAliases.includes(aliasValue)) {
             toast({ title: "Erro", description: "Este apelido já existe!", variant: "destructive" });
             return;
@@ -48,7 +63,7 @@ export function AdminPlayerManager({ groupId }: { groupId: string }) {
         }, { merge: true });
 
         setNewAlias({ ...newAlias, [player.id]: "" });
-        toast({ title: "Sucesso", description: `Apelido "${aliasValue}" vinculado a ${player.nomeLista}` });
+        toast({ title: "Sucesso", description: `Apelido "${aliasValue}" vinculado.` });
     };
 
     const removeAlias = async (player: PlayerMeta, aliasToRemove: string) => {
@@ -64,19 +79,47 @@ export function AdminPlayerManager({ groupId }: { groupId: string }) {
         .filter(p => p.nomeLista?.toLowerCase().includes(searchTerm.toLowerCase()))
         .sort((a, b) => a.nomeLista.localeCompare(b.nomeLista));
 
+    // TRAVA DE ACESSO: SuperAdmin sempre entra. Admin só entra se o plano dele for PRO ou o grupo for PRO.
+    const hasAccess = isSuperAdmin || isPro || groupIsPro;
+
+    if (!hasAccess && !loading) {
+        return (
+            <div className="flex flex-col items-center justify-center h-[50vh] p-8 text-center bg-zinc-950/30 rounded-[2rem] border border-dashed border-white/10">
+                <div className="bg-primary/10 p-4 rounded-full mb-4">
+                    <Lock className="size-8 text-primary opacity-50" />
+                </div>
+                <h2 className="text-lg font-black italic uppercase text-white mb-2">Gestão de Identidade PRO</h2>
+                <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest leading-relaxed mb-6 max-w-[250px]">
+                    Vincule apelidos e resolva duplicatas automaticamente assinando o plano PRO.
+                </p>
+                <Button className="bg-primary text-black font-black text-[10px] uppercase italic rounded-full px-8">
+                    Assinar Agora
+                </Button>
+            </div>
+        );
+    }
+
     return (
-        <div className="flex flex-col h-[70vh] bg-zinc-950/50 rounded-[2rem] overflow-hidden border border-white/5">
+        <div className="flex flex-col h-[70vh] bg-zinc-950/50 rounded-[2rem] overflow-hidden border border-white/5 animate-in fade-in duration-500">
             {/* Header Fixo com Busca */}
             <div className="p-6 border-b border-white/5 bg-zinc-900/50 space-y-4">
-                <div className="flex items-center gap-2">
-                    <ShieldCheck className="text-primary size-5" />
-                    <h1 className="text-sm font-black italic uppercase tracking-tight text-white">Gestão de Identidade</h1>
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <ShieldCheck className="text-primary size-5" />
+                        <h1 className="text-sm font-black italic uppercase tracking-tight text-white">Gestão de Identidade</h1>
+                    </div>
+                    {(isPro || groupIsPro || isSuperAdmin) && (
+                        <div className="flex items-center gap-1 bg-primary/10 px-2 py-0.5 rounded-md border border-primary/20">
+                            <Crown className="size-2.5 text-primary" />
+                            <span className="text-[7px] font-black text-primary uppercase">PRO</span>
+                        </div>
+                    )}
                 </div>
                 <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-white/20" />
                     <Input
                         placeholder="Pesquisar por nome oficial..."
-                        className="h-10 bg-black/40 border-white/10 pl-10 text-xs font-bold uppercase italic"
+                        className="h-10 bg-black/40 border-white/10 pl-10 text-xs font-bold uppercase italic focus:ring-1 focus:ring-primary/30"
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                     />
@@ -128,14 +171,14 @@ export function AdminPlayerManager({ groupId }: { groupId: string }) {
                                 onChange={(e) => setNewAlias({ ...newAlias, [player.id]: e.target.value })}
                                 onKeyDown={(e) => e.key === 'Enter' && addAlias(player)}
                             />
-                            <Button size="sm" onClick={() => addAlias(player)} className="h-8 w-8 p-0 bg-primary hover:bg-primary/80 text-black">
+                            <Button size="sm" onClick={() => addAlias(player)} className="h-8 w-8 p-0 bg-primary hover:bg-primary/80 text-black shadow-lg shadow-primary/10">
                                 <Plus className="size-4 stroke-[3px]" />
                             </Button>
                         </div>
                     </div>
                 ))}
 
-                {filteredPlayers.length === 0 && (
+                {filteredPlayers.length === 0 && !loading && (
                     <div className="py-10 text-center text-white/20 text-[10px] font-bold uppercase italic tracking-widest">
                         Nenhum atleta encontrado
                     </div>

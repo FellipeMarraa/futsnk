@@ -4,6 +4,7 @@ import {
     Calendar,
     ChevronRight,
     CircleDollarSign,
+    Crown,
     Fingerprint,
     Loader2,
     MapPin,
@@ -14,7 +15,8 @@ import {
     Trash2,
     Trophy,
     Users,
-    Wallet
+    Wallet,
+    Zap
 } from "lucide-react"
 import {Card, CardContent} from "@/components/ui/card"
 import {Badge} from "@/components/ui/badge"
@@ -43,6 +45,7 @@ import {AdminPlayerManager} from "./admin-player-manager"
 import {CreateGroupDialog} from "@/components/create-group-dialog"
 import {useToast} from "@/hooks/use-toast"
 import {InviteButton} from "@/components/invite-button.tsx"
+import {UpgradePlanModal} from "@/components/upgrade-plan.tsx";
 
 interface GroupDetailProps {
     groupId: string
@@ -64,7 +67,7 @@ function InfoCard({ label, value, icon: Icon, variant = "default" }: any) {
     };
 
     return (
-        <div className={`${variants[variant]} border p-3 rounded-xl shadow-inner`}>
+        <div className={`${variants[variant]} border p-3 rounded-xl shadow-inner transition-all hover:scale-[1.02]`}>
             <div className="flex items-center gap-2 mb-1">
                 <Icon className="size-3 opacity-60" />
                 <span className="text-[8px] font-black uppercase tracking-widest">{label}</span>
@@ -77,7 +80,7 @@ function InfoCard({ label, value, icon: Icon, variant = "default" }: any) {
 }
 
 export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
-    const { user, isSuperAdmin } = useAuth()
+    const { user, isSuperAdmin, isPro } = useAuth()
     const { toast } = useToast()
     const [group, setGroup] = useState<any | null>(null)
     const [loading, setLoading] = useState(true)
@@ -85,12 +88,14 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
     const [matches, setMatches] = useState<any[]>([])
     const [selectedMatch, setSelectedMatch] = useState<any | null>(null)
     const [isMatchModalOpen, setIsMatchModalOpen] = useState(false)
+    const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false)
 
     const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
 
     // Permissão unificada (Dono ou Admin Supremo)
     const userIsAdmin = isUserAdmin(group, user);
+    const isGroupPro = group?.isPro === true;
 
     const latestMatchPlayers = matches.length > 0 ? matches[0].confirmedPlayers || [] : [];
 
@@ -194,7 +199,7 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
                 </div>
             )}
 
-            <header className="sticky top-0 z-50 bg-background/60 backdrop-blur-md border-b border-white/5">
+            <header className={`sticky top-0 z-40 backdrop-blur-md border-b border-white/5 transition-all ${isGroupPro ? 'bg-primary/[0.03]' : 'bg-background/60'}`}>
                 <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between gap-4">
                     <div className="flex items-center gap-3 min-w-0">
                         <button onClick={onBack} className="p-2 hover:bg-white/5 rounded-full transition-colors shrink-0 outline-none">
@@ -202,11 +207,16 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
                         </button>
                         <div className="min-w-0 flex items-center gap-2">
                             <div>
-                                <h1 className="text-lg font-black italic uppercase tracking-tighter truncate text-white leading-none">
+                                <h1 className="text-lg font-black italic uppercase tracking-tighter truncate text-white leading-none flex items-center gap-2">
                                     {group.name}
+                                    {isGroupPro && <Zap className="size-3 text-primary fill-primary shadow-[0_0_10px_rgba(234,255,0,1)]" />}
                                 </h1>
-                                <p className="text-[8px] font-bold text-primary uppercase tracking-[0.2em] mt-1">
-                                    {isSuperAdmin ? "Sistema: Overseer" : "Status: Ativo"}
+                                <p className="text-[8px] font-bold text-primary uppercase tracking-[0.2em] mt-1 flex items-center gap-1">
+                                    {isGroupPro ? (
+                                        <><Crown className="size-2" /> Clube Elite</>
+                                    ) : (
+                                        "Status: Ativo"
+                                    )}
                                 </p>
                             </div>
 
@@ -245,6 +255,7 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
             </header>
 
             <main className="w-full max-w-4xl mx-auto px-4 py-6 space-y-6">
+
                 {/* GRID DE INFORMAÇÕES COMPONENTIZADA */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 w-full">
                     <InfoCard
@@ -287,12 +298,22 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
                     </TabsList>
 
                     <TabsContent value="matches" className="w-full block m-0 outline-none space-y-4">
-                        <h3 className="text-[10px] font-black text-white/30 uppercase tracking-[0.3em] px-1">Histórico da Temporada</h3>
+                        <div className="flex items-center justify-between px-1">
+                            <h3 className="text-[10px] font-black text-white/30 uppercase tracking-[0.3em]">Histórico da Temporada</h3>
+                            {!isPro && userIsAdmin && (
+                                <button
+                                    onClick={() => setIsUpgradeModalOpen(true)}
+                                    className="text-[8px] font-black text-primary uppercase animate-pulse"
+                                >
+                                    Ver Estatísticas PRO
+                                </button>
+                            )}
+                        </div>
 
                         {matches.length === 0 ? (
                             <div className="flex flex-col items-center justify-center py-16 border border-dashed border-white/5 rounded-2xl bg-white/[0.02]">
                                 <Calendar className="size-10 text-white/10 mb-2" />
-                                <p className="text-[10px] font-bold text-white/20 uppercase">Nenhuma rodada.</p>
+                                <p className="text-[10px] font-bold text-white/20 uppercase">Nenhuma rodada agendada.</p>
                             </div>
                         ) : (
                             <div className="grid gap-3 w-full">
@@ -314,12 +335,12 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
                                     return (
                                         <Card
                                             key={match.id}
-                                            className="w-full cursor-pointer border-none bg-white/[0.03] active:bg-white/[0.08] transition-all rounded-[1.5rem] group overflow-hidden shadow-lg"
+                                            className={`w-full cursor-pointer border-none bg-white/[0.03] active:bg-white/[0.08] transition-all rounded-[1.5rem] group overflow-hidden shadow-lg ${isGroupPro ? 'hover:bg-primary/[0.05]' : ''}`}
                                             onClick={() => setSelectedMatch(match)}
                                         >
                                             <CardContent className="p-4 flex items-center justify-between">
                                                 <div className="flex items-center gap-4 min-w-0">
-                                                    <div className="size-11 rounded-xl bg-zinc-900 border border-white/5 flex flex-col items-center justify-center shrink-0 shadow-inner text-white">
+                                                    <div className={`size-11 rounded-xl bg-zinc-900 border flex flex-col items-center justify-center shrink-0 shadow-inner text-white ${isGroupPro ? 'border-primary/20' : 'border-white/5'}`}>
                                                         <span className="text-[10px] font-black text-primary leading-none uppercase">
                                                             {new Date(match.date + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit' })}
                                                         </span>
@@ -346,7 +367,7 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
                                                     <Badge className={`${matchStatus.color} border text-[8px] font-black uppercase italic tracking-tighter rounded px-2`}>
                                                         {matchStatus.label}
                                                     </Badge>
-                                                    <ChevronRight className="size-4 text-primary" />
+                                                    <ChevronRight className="size-4 text-primary transition-transform group-hover:translate-x-1" />
                                                 </div>
                                             </CardContent>
                                         </Card>
@@ -359,18 +380,39 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
                     <TabsContent value="players" className="w-full block m-0 outline-none">
                         <PlayerListManager
                             groupId={groupId}
-                            isAdmin={userIsAdmin}
                             currentMatchPlayers={latestMatchPlayers}
                         />
                     </TabsContent>
 
                     {userIsAdmin && (
                         <TabsContent value="admin" className="w-full block m-0 outline-none">
-                            <AdminPlayerManager groupId={groupId} />
+                            {/* TRAVA DE GESTÃO PRO */}
+                            {isPro || isGroupPro ? (
+                                <AdminPlayerManager groupId={groupId} />
+                            ) : (
+                                <div className="flex flex-col items-center justify-center py-20 bg-white/5 border border-white/5 rounded-3xl text-center px-8">
+                                    <Crown className="size-10 text-primary mb-4 opacity-50" />
+                                    <h3 className="text-sm font-black italic uppercase text-white mb-2">Painel de Gestão Avançada</h3>
+                                    <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest max-w-[200px] leading-relaxed mb-6">
+                                        Assine o PRO para gerenciar atletas, editar OVR e equilibrar seu racha.
+                                    </p>
+                                    <Button
+                                        onClick={() => setIsUpgradeModalOpen(true)}
+                                        className="bg-primary text-black font-black text-[9px] uppercase italic rounded-full h-10 px-8"
+                                    >
+                                        Fazer Upgrade
+                                    </Button>
+                                </div>
+                            )}
                         </TabsContent>
                     )}
                 </Tabs>
             </main>
+
+            <UpgradePlanModal
+                isOpen={isUpgradeModalOpen}
+                onClose={() => setIsUpgradeModalOpen(false)}
+            />
 
             {/* DIALOGS E MODALS FINAIS */}
             <Dialog open={isMatchModalOpen} onOpenChange={setIsMatchModalOpen}>
@@ -386,7 +428,6 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
                     <div className="w-full">
                         <MatchManager
                             groupId={groupId}
-                            isAdmin={userIsAdmin}
                             onCreated={() => setIsMatchModalOpen(false)}
                             onCancel={() => setIsMatchModalOpen(false)}
                         />

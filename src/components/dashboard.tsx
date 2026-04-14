@@ -4,6 +4,8 @@ import {
     Calendar,
     ChevronRight,
     Clock,
+    Crown,
+    LayoutDashboard,
     Loader2,
     LogOut,
     Pencil,
@@ -12,9 +14,7 @@ import {
     Trash2,
     Trophy,
     Users,
-    Zap,
-    LayoutDashboard, // Ícone para o Painel Supremo
-    Crown
+    Zap
 } from "lucide-react"
 import {Card, CardContent} from "@/components/ui/card"
 import {Badge} from "@/components/ui/badge"
@@ -38,15 +38,15 @@ import {deleteGroup, getUserGroups, isUserAdmin} from "@/lib/firebase-services.t
 import {useToast} from "@/hooks/use-toast"
 import {PlayerProfileDialog} from "@/components/player-profile-dialog.tsx";
 import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar.tsx";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import {useNavigate, useSearchParams} from "react-router-dom";
 import {UpgradePlanModal} from "@/components/upgrade-plan.tsx";
 
 const DAYS_MAP: Record<string, string> = { "0": "Dom", "1": "Seg", "2": "Ter", "3": "Qua", "4": "Qui", "5": "Sex", "6": "Sáb" };
 
 export function Dashboard({ onSelectGroup }: { onSelectGroup: (groupId: string) => void }) {
-    const { user } = useAuth()
+    const { user, isPro, isSuperAdmin } = useAuth()
     const { toast } = useToast()
-    const navigate = useNavigate(); // Hook para navegar para o painel administrativo
+    const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
 
     const [groups, setGroups] = useState<any[]>([])
@@ -60,6 +60,10 @@ export function Dashboard({ onSelectGroup }: { onSelectGroup: (groupId: string) 
 
     const [tempNome, setTempNome] = useState("");
     const [isSavingName, setIsSavingName] = useState(false)
+
+    // Lógica para contar quantos grupos o usuário FUNDOU (owner)
+    // Isso é o que define o limite do plano FREE
+    const foundedGroupsCount = groups.filter(g => g.ownerId === user?.uid).length;
 
     // Efeito para detectar o retorno do Mercado Pago via URL
     useEffect(() => {
@@ -124,6 +128,21 @@ export function Dashboard({ onSelectGroup }: { onSelectGroup: (groupId: string) 
         }
     };
 
+    // Função para lidar com o clique em "Fundar Clube" respeitando o limite
+    const handleAddGroupClick = () => {
+        if (!isPro && foundedGroupsCount >= 1) {
+            setIsUpgradeModalOpen(true);
+            toast({
+                title: "LIMITE ATINGIDO",
+                description: "Usuários FREE podem fundar apenas 1 clube.",
+                variant: "destructive"
+            });
+            return;
+        }
+        setGroupToEdit(null);
+        setIsCreateModalOpen(true);
+    };
+
     if (user && !user.nomeLista) {
         return (
             <div className="fixed inset-0 z-[100] bg-background flex items-center justify-center p-6 overflow-hidden">
@@ -185,7 +204,7 @@ export function Dashboard({ onSelectGroup }: { onSelectGroup: (groupId: string) 
                     </div>
 
                     <div className="flex items-center gap-2">
-                        {!user?.isPro && (
+                        {!isPro && (
                             <Button
                                 onClick={() => setIsUpgradeModalOpen(true)}
                                 variant="ghost"
@@ -196,7 +215,7 @@ export function Dashboard({ onSelectGroup }: { onSelectGroup: (groupId: string) 
                         )}
 
                         <Button
-                            onClick={() => { setGroupToEdit(null); setIsCreateModalOpen(true); }}
+                            onClick={handleAddGroupClick}
                             className="bg-primary text-black font-black text-[9px] uppercase italic h-8 px-3 rounded-md shadow-[0_0_15px_rgba(234,255,0,0.3)]"
                         >
                             <Plus className="size-3 mr-1 stroke-[3px]" /> Fundar Clube
@@ -222,7 +241,7 @@ export function Dashboard({ onSelectGroup }: { onSelectGroup: (groupId: string) 
                                     <Star className="size-3.5 mr-2 text-primary fill-primary" /> Meu Perfil
                                 </DropdownMenuItem>
 
-                                {!user?.isPro && (
+                                {!isPro && (
                                     <DropdownMenuItem
                                         onClick={() => setIsUpgradeModalOpen(true)}
                                         className="font-bold text-[10px] uppercase italic py-2 cursor-pointer gap-2 text-primary hover:bg-primary/5 focus:bg-primary/5"
@@ -231,8 +250,7 @@ export function Dashboard({ onSelectGroup }: { onSelectGroup: (groupId: string) 
                                     </DropdownMenuItem>
                                 )}
 
-                                {/* OPÇÃO SECRETA: Somente para o Admin Supremo do Sistema */}
-                                {user?.isSuperAdmin && (
+                                {isSuperAdmin && (
                                     <DropdownMenuItem
                                         onClick={() => navigate("/admin-supremo")}
                                         className="font-bold text-[10px] text-primary uppercase italic py-2 cursor-pointer hover:bg-primary/10 transition-colors focus:bg-primary/10 focus:text-primary"
@@ -255,9 +273,16 @@ export function Dashboard({ onSelectGroup }: { onSelectGroup: (groupId: string) 
 
             <main className="flex-1 w-full max-w-4xl mx-auto px-4 py-6 flex flex-col">
                 <div className="mb-6 shrink-0 text-center sm:text-left">
-                    <h1 className="text-2xl font-black italic tracking-tighter uppercase text-white leading-tight">
-                        CENTRAL DE <span className="text-primary">CLUBES</span>
-                    </h1>
+                    <div className="flex items-center gap-3 justify-center sm:justify-start">
+                        <h1 className="text-2xl font-black italic tracking-tighter uppercase text-white leading-tight">
+                            CENTRAL DE <span className="text-primary">CLUBES</span>
+                        </h1>
+                        {isPro && (
+                            <Badge className="bg-primary/10 text-primary border-primary/20 text-[8px] font-black px-2 py-0.5 animate-pulse">
+                                PRO ACCOUNT
+                            </Badge>
+                        )}
+                    </div>
                     <p className="text-primary/40 font-bold text-[8px] uppercase tracking-[0.4em]">Temporada Ativa 2026</p>
                 </div>
 
@@ -282,10 +307,10 @@ export function Dashboard({ onSelectGroup }: { onSelectGroup: (groupId: string) 
                             return (
                                 <Card
                                     key={group.id}
-                                    className="group relative border-primary/20 bg-white/[0.05] rounded-xl overflow-hidden shadow-[0_10px_30px_-15px_rgba(0,0,0,0.5)] active:scale-[0.98] transition-all cursor-pointer hover:border-primary/40"
+                                    className={`group relative border-primary/20 bg-white/[0.05] rounded-xl overflow-hidden shadow-[0_10px_30px_-15px_rgba(0,0,0,0.5)] active:scale-[0.98] transition-all cursor-pointer hover:border-primary/40 ${group.isPro ? 'border-primary/40 bg-primary/[0.02]' : ''}`}
                                     onClick={() => onSelectGroup(group.id)}
                                 >
-                                    <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-transparent opacity-100 group-hover:opacity-100 transition-opacity" />
+                                    <div className={`absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-transparent opacity-100 group-hover:opacity-100 transition-opacity ${group.isPro ? 'from-primary/20' : ''}`} />
 
                                     <CardContent className="p-5 relative z-10">
                                         <div className="flex items-center justify-between mb-5">
@@ -295,11 +320,11 @@ export function Dashboard({ onSelectGroup }: { onSelectGroup: (groupId: string) 
 
                                             <div className="flex items-center gap-2">
                                                 {group.isPro ? (
-                                                    <Badge className="bg-amber-500/10 text-amber-500 border border-amber-500/20 text-[7px] font-black uppercase px-1.5 h-4 flex items-center gap-1">
-                                                        <Zap className="size-2 fill-amber-500" /> PRO
+                                                    <Badge className="bg-primary text-black border-none text-[7px] font-black uppercase px-1.5 h-4 flex items-center gap-1 shadow-[0_0_10px_rgba(234,255,0,0.4)]">
+                                                        <Zap className="size-2 fill-black" /> CLUBE PRO
                                                     </Badge>
                                                 ) : (
-                                                    <Badge className="bg-white/5 text-white/30 border-none text-[7px] font-black uppercase px-1.5 h-4">FREE</Badge>
+                                                    <Badge className="bg-white/5 text-white/30 border-none text-[7px] font-black uppercase px-1.5 h-4">BASIC</Badge>
                                                 )}
 
                                                 {userIsAdmin && (
