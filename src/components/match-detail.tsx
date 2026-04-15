@@ -236,39 +236,66 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
         finally { setIsProcessing(false) }
     }
 
+    // Substitua sua função handleDraw por esta:
+
     const handleDraw = async () => {
         if (selectedForDraw.length < 2) {
-            toast({ variant: "destructive", title: "POUCOS ATLETAS", description: "Marque quem já chegou para o sorteio." });
+            toast({
+                variant: "destructive",
+                title: "POUCOS ATLETAS",
+                description: "Marque na lista quem já chegou."
+            });
             return;
         }
 
-        // TRAVA PRO: Se não tiver acesso PRO, bloqueia o sorteio inteligente
-        if (!hasProAccess) {
+        // --- NOVA LÓGICA DE TRAVA ---
+
+        // 1. Se já houve um sorteio (status !== 'open') e o usuário NÃO é PRO
+        // Bloqueia a tentativa de "Refazer" o sorteio
+        if (match.status !== "open" && !hasProAccess) {
             setIsUpgradeModalOpen(true);
             toast({
-                title: "RECURSO PRO",
-                description: "O sorteio equilibrado por nível é exclusivo para usuários PRO.",
+                title: "REFAZER SORTEIO É PRO",
+                description: "Usuários Free só podem sortear os times uma única vez por rodada.",
                 variant: "destructive"
             });
             return;
         }
 
-        setIsProcessing(true)
+        // 2. Se o usuário tenta sortear e NÃO é PRO, garantimos que o sorteio seja ALEATÓRIO
+        // (O sorteio inteligente por OVR é apenas para hasProAccess)
+
+        setIsProcessing(true);
         try {
             const { DrawService } = await import("@/lib/draw.service.ts");
             const presentPlayers = selectedForDraw;
-            const absentPlayers = (match.confirmedPlayers || []).filter((n: string) => !selectedForDraw.includes(n));
-            const result = await DrawService.calculateTeams(groupId, presentPlayers, absentPlayers)
+            const absentPlayers = (match.confirmedPlayers || []).filter(
+                (n: string) => !selectedForDraw.includes(n)
+            );
+
+            // Se for PRO, usa a lógica de equilíbrio. Se for FREE, força o aleatório.
+            const useSmartDraw = hasProAccess;
+
+            const result = await DrawService.calculateTeams(
+                groupId,
+                presentPlayers,
+                absentPlayers,
+                useSmartDraw // Você precisará passar esse booleano para o seu serviço
+            );
 
             await updateDoc(doc(db, "groups", groupId, "matches", match.id), {
                 teams: result,
-                status: "drawn",
+                status: "drawn", // Muda o status de 'open' para 'drawn'
                 updatedAt: new Date()
-            })
-            toast({ title: "SORTEIO REALIZADO" })
-        } catch (e) { toast({ variant: "destructive", title: "ERRO NO SORTEIO" }) }
-        finally { setIsProcessing(false) }
-    }
+            });
+
+            toast({ title: hasProAccess ? "EQUILÍBRIO PRO APLICADO" : "SORTEIO ALEATÓRIO REALIZADO" });
+        } catch (e) {
+            toast({ variant: "destructive", title: "ERRO NO SORTEIO" });
+        } finally {
+            setIsProcessing(false);
+        }
+    };
 
     const handleOpenVoting = async () => {
         setIsProcessing(true)
@@ -412,9 +439,14 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
                                 </div>
                                 {isAdmin && match.status !== "finished" && (
                                     <div className="mb-4">
-                                        <Button onClick={handleDraw} disabled={isProcessing} variant="outline" className={`border-white/10 text-white/60 hover:text-white text-[9px] font-black uppercase italic h-8 rounded-lg ${hasProAccess ? 'bg-primary/10 border-primary/20' : 'bg-white/5'}`}>
-                                            <RefreshCw className={`size-3 mr-2 ${isProcessing ? 'animate-spin' : ''}`} />
-                                            {hasProAccess ? 'Refazer Equilíbrio PRO' : 'Sorteio Aleatório'}
+                                        <Button onClick={handleDraw} disabled={isProcessing} className="...">
+                                            {isProcessing ? <Loader2 className="animate-spin size-4" /> : (
+                                                <>
+                                                    {hasProAccess ? <Zap className="size-3 mr-2" /> : <RefreshCw className="size-3 mr-2" />}
+                                                    {/* Se já foi sorteado uma vez, mostra 'Refazer' para o PRO */}
+                                                    {match.status !== "open" ? (hasProAccess ? "Refazer Equilíbrio PRO" : "Refazer (Recurso PRO)") : "Realizar Sorteio"}
+                                                </>
+                                            )}
                                         </Button>
                                     </div>
                                 )}

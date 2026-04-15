@@ -2,30 +2,36 @@ import { collection, getDocs, query, doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
 export const DrawService = {
-    async calculateTeams(groupId: string, presentNames: string[], absentNames: string[]) {
-        // 1. VERIFICAÇÃO BLINDADA: Grupo PRO + Dono Ativo
-        const groupRef = doc(db, "groups", groupId);
-        const groupSnap = await getDoc(groupRef);
+    async calculateTeams(
+        groupId: string,
+        presentNames: string[],
+        absentNames: string[],
+        useSmartDraw: boolean = false // <--- Adicionado o 4º parâmetro com padrão false
+    ) {
+        // 1. VERIFICAÇÃO DE STATUS
+        // Se useSmartDraw for true, confiamos no componente.
+        // Se for false, fazemos uma última checagem no banco para garantir segurança (trava blindada).
+        let isEffectivelyPro = useSmartDraw;
 
-        let isEffectivelyPro = false;
+        if (!isEffectivelyPro) {
+            const groupRef = doc(db, "groups", groupId);
+            const groupSnap = await getDoc(groupRef);
 
-        if (groupSnap.exists()) {
-            const groupData = groupSnap.data();
-            const groupMarkedPro = groupData.isPro || false;
-            const ownerId = groupData.ownerId;
+            if (groupSnap.exists()) {
+                const groupData = groupSnap.data();
+                const ownerId = groupData.ownerId;
 
-            if (groupMarkedPro && ownerId) {
-                // Buscamos o status real do dono no momento do sorteio
-                const ownerSnap = await getDoc(doc(db, "users", ownerId));
-                if (ownerSnap.exists()) {
-                    const ownerData = ownerSnap.data();
-                    // O racha só é equilibrado se o dono for PRO ou SuperAdmin
-                    isEffectivelyPro = ownerData.isPro === true || ownerData.isSuperAdmin === true;
+                if (groupData.isPro && ownerId) {
+                    const ownerSnap = await getDoc(doc(db, "users", ownerId));
+                    if (ownerSnap.exists()) {
+                        const ownerData = ownerSnap.data();
+                        isEffectivelyPro = ownerData.isPro === true || ownerData.isSuperAdmin === true;
+                    }
                 }
             }
         }
 
-        // 2. Busca metas (players_meta)
+        // 2. Busca metas (necessário para calcular o Power apenas se for PRO)
         const q = query(collection(db, "groups", groupId, "players_meta"));
         const snap = await getDocs(q);
         const metaData = snap.docs.map(d => ({ id: d.id, ...d.data() as any }));
@@ -40,7 +46,8 @@ export const DrawService = {
 
             return {
                 name,
-                power: (Number(data.technique) * 1.5) + Number(data.speed)
+                // Se não for PRO, o power é fixo em 0 para não influenciar em nada
+                power: isEffectivelyPro ? (Number(data.technique) * 1.5) + Number(data.speed) : 0
             };
         };
 
@@ -48,7 +55,7 @@ export const DrawService = {
             teamA: [], teamB: [], teamC: []
         };
 
-        // 3. Processamento dos Jogadores Presentes usando a nova trava isEffectivelyPro
+        // 3. Processamento dos Jogadores Presentes
         if (isEffectivelyPro) {
             // --- LÓGICA PRO: EQUILÍBRIO POR PODER ---
             const presentPlayers = presentNames.map(mapPlayer).sort(() => Math.random() - 0.5);
@@ -68,7 +75,7 @@ export const DrawService = {
                 }
             });
         } else {
-            // --- LÓGICA FREE: SORTEIO ALEATÓRIO (IGNORA POWER) ---
+            // --- LÓGICA FREE: SORTEIO TOTALMENTE ALEATÓRIO ---
             const presentPlayers = presentNames.map(name => ({ name, power: 0 }));
             const shuffled = [...presentPlayers].sort(() => Math.random() - 0.5);
 
@@ -83,23 +90,19 @@ export const DrawService = {
             });
         }
 
-        // 4. Prepara e adiciona os ausentes no Time C
+        // 4. Adiciona os ausentes no Time C
         const absentPlayers = absentNames.map(mapPlayer);
         teams.teamC.push(...absentPlayers);
 
-        // 5. Embaralha visualmente para o resultado final
-        const finalA = teams.teamA.sort(() => Math.random() - 0.5);
-        const finalB = teams.teamB.sort(() => Math.random() - 0.5);
-        const finalC = teams.teamC;
-
+        // 5. Resultado final
         return {
-            teamA: finalA,
-            teamB: finalB,
-            teamC: finalC,
+            teamA: teams.teamA.sort(() => Math.random() - 0.5),
+            teamB: teams.teamB.sort(() => Math.random() - 0.5),
+            teamC: teams.teamC,
             scores: {
-                a: finalA.reduce((acc, p) => acc + p.power, 0),
-                b: finalB.reduce((acc, p) => acc + p.power, 0),
-                c: finalC.reduce((acc, p) => acc + p.power, 0)
+                a: teams.teamA.reduce((acc, p) => acc + p.power, 0),
+                b: teams.teamB.reduce((acc, p) => acc + p.power, 0),
+                c: teams.teamC.reduce((acc, p) => acc + p.power, 0)
             },
             drawType: isEffectivelyPro ? "pro_balanced" : "free_random"
         };

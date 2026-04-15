@@ -195,15 +195,18 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
                         </div>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
-                        <InviteButton groupId={groupId} groupName={group.name} />
                         {userIsAdmin && (
-                            <Button
-                                onClick={() => setIsMatchModalOpen(true)}
-                                className="bg-primary hover:bg-primary/90 text-black font-black text-[9px] uppercase italic h-8 sm:h-9 px-2 sm:px-4 rounded-lg shadow-lg"
-                            >
-                                <Plus className="size-3 sm:mr-1 stroke-[3px]" />
-                                <span className="hidden sm:inline">Agendar</span>
-                            </Button>
+                            <>
+                                <InviteButton groupId={groupId} groupName={group.name} />
+                                <Button
+                                    onClick={() => setIsMatchModalOpen(true)}
+                                    className="bg-primary hover:bg-primary/90 text-black font-black text-[9px] uppercase italic h-8 sm:h-9 px-2 sm:px-4 rounded-lg shadow-lg"
+                                >
+                                    <Plus className="size-3 sm:mr-1 stroke-[3px]" />
+                                    <span className="hidden sm:inline">Agendar</span>
+                                </Button>
+                            </>
+
                         )}
                     </div>
                 </div>
