@@ -19,23 +19,21 @@ export const UpgradePlanModal = ({ isOpen, onClose }: { isOpen: boolean; onClose
     const [isRedeeming, setIsRedeeming] = useState(false);
 
     // Lógica de Pagamento (Mercado Pago)
-    const handlePayment = async (planType: 'mensal' | 'anual', price: number) => {
+    const handlePayment = async (planType: 'mensal' | 'anual') => {
         if (!user?.uid) return;
         setLoadingPlan(planType);
 
         try {
-            const response = await fetch('/api/checkout', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId: user.uid, planType, price }),
-            });
+            // Em vez de fetch para a API que está dando 405,
+            // mandamos o usuário para o checkout oficial do Mercado Pago.
+            // Opcional: Adicionamos o UID do usuário na URL para você saber quem pagou no painel do MP
+            const MP_LINK = `https://mpago.la/2As7j9m?external_reference=${user.uid}`;
 
-            const data = await response.json();
-            if (data.init_point) {
-                window.location.href = data.init_point;
-            } else {
-                throw new Error("Erro ao gerar link");
-            }
+            // Simulamos um pequeno delay para o loader dar feedback visual
+            setTimeout(() => {
+                window.location.href = MP_LINK;
+            }, 800);
+
         } catch (error) {
             toast({
                 title: "Erro no Checkout",
@@ -107,7 +105,7 @@ export const UpgradePlanModal = ({ isOpen, onClose }: { isOpen: boolean; onClose
                     {/* Botão de Compra - Plano Mensal */}
                     <Button
                         className="w-full bg-primary hover:bg-primary/90 text-black h-16 rounded-2xl flex flex-col items-center justify-center gap-0 shadow-[0_0_30px_rgba(234,255,0,0.15)] transition-all active:scale-95"
-                        onClick={() => handlePayment('mensal', 19.90)}
+                        onClick={() => handlePayment('mensal')}
                         disabled={loadingPlan !== null || isRedeeming}
                     >
                         {loadingPlan === 'mensal' ? (
