@@ -1,43 +1,46 @@
-import {db} from "@/lib/firebase"
-import {addDoc, collection, limit, onSnapshot, orderBy, query, serverTimestamp} from "firebase/firestore"
+import { db } from "./firebase";
+import {
+    collection,
+    query,
+    where,
+    orderBy,
+    limit,
+    onSnapshot
+} from "firebase/firestore";
 
 export interface SystemNotification {
-    id?: string
-    target: "global" | "group" | "user"
-    targetId?: string
-    message: string
-    type: "info" | "warning" | "error"
-    createdAt: any
+    id: string;
+    message: string;
+    type: 'info' | 'warning' | 'error';
+    target: string;
+    targetId: string;
+    createdAt: any;
 }
 
-export const sendSystemNotification = async (notif: Omit<SystemNotification, "createdAt">) => {
+/**
+ * Inscreve o usuário logado para receber apenas suas notificações privadas.
+ */
+export function subscribeToNotifications(userId: string, callback: (notifs: SystemNotification[]) => void) {
+    // Referência da coleção
+    const notificationsRef = collection(db, "system_notifications");
 
-    const cleanData = JSON.parse(JSON.stringify(notif));
-
-    try {
-        const docRef = await addDoc(collection(db, "system_notifications"), {
-            ...cleanData,
-            createdAt: serverTimestamp()
-        });
-        return docRef;
-    } catch (error) {
-        console.error("Serviço: Erro ao adicionar documento:", error);
-        throw error;
-    }
-}
-
-export const subscribeToNotifications = (callback: (notifs: SystemNotification[]) => void) => {
-
+    // Query blindada: Filtra apenas notificações destinadas ao UID do usuário logado
     const q = query(
-        collection(db, "system_notifications"),
+        notificationsRef,
+        where("targetId", "==", userId), // <-- Trava de segurança
         orderBy("createdAt", "desc"),
         limit(1)
-    )
+    );
 
-    return onSnapshot(q, (snap) => {
-        const notifs = snap.docs.map(d => ({ id: d.id, ...d.data() } as SystemNotification))
-        callback(notifs)
+    // Escuta em tempo real
+    return onSnapshot(q, (snapshot) => {
+        const notifs = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        })) as SystemNotification[];
+
+        callback(notifs);
     }, (error) => {
-        console.error("Serviço: Erro no onSnapshot:", error);
-    })
+        console.error("Erro ao ouvir notificações:", error);
+    });
 }

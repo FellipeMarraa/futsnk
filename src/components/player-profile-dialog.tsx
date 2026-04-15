@@ -62,6 +62,12 @@ export function PlayerProfileDialog({ isOpen, onClose, user: propUser, initialGr
 
     const showGroupSelector = allGroups.length > 1;
 
+    const formatDate = (date: any) => {
+        if (!date) return "";
+        const d = date.toDate ? date.toDate() : new Date(date);
+        return d.toLocaleDateString('pt-BR');
+    };
+
     useEffect(() => {
         if (isOpen) {
             setShowCouponInput(false);
@@ -288,10 +294,24 @@ export function PlayerProfileDialog({ isOpen, onClose, user: propUser, initialGr
 
                         <div className="mb-8">
                             {hasProAccess ? (
-                                <div className="flex items-center gap-1.5 bg-primary/10 border border-primary/20 px-3 py-1 rounded-full animate-pulse">
-                                    <Crown className="size-2.5 text-primary fill-primary" />
-                                    <span className="text-[8px] font-black text-primary uppercase tracking-widest">Acesso Elite Ativado</span>
-                                </div>
+                                <>
+                                    <div className="flex items-center gap-1.5 bg-primary/10 border border-primary/20 px-3 py-1 rounded-full animate-pulse">
+                                        <Crown className="size-2.5 text-primary fill-primary" />
+                                        <span className="text-[8px] font-black text-primary uppercase tracking-widest">Acesso Elite Ativado</span>
+                                    </div>
+
+                                    {userIsPro && propUser.proUntil && !isSuperAdmin && (
+                                        <p className="text-[7px] font-bold text-white/30 uppercase tracking-[0.2em] flex items-center gap-1">
+                                            <Clock className="size-2" /> Válido até {formatDate(propUser.proUntil)}
+                                        </p>
+                                    )}
+
+                                    {isSuperAdmin && (
+                                        <p className="text-[7px] font-bold text-primary/50 uppercase tracking-[0.2em]">
+                                            Acesso Vitalício Overseer
+                                        </p>
+                                    )}
+                                </>
                             ) : (
                                 <p className="text-[9px] font-bold text-white/30 uppercase tracking-[0.4em]">
                                     {loading ? "Sincronizando..." : "Estatísticas da Temporada"}

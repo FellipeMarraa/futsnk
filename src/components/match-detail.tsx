@@ -89,7 +89,16 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
     const [hasLoadedInitialPlayers, setHasLoadedInitialPlayers] = useState(false);
     const [groupIsPro, setGroupIsPro] = useState(false);
 
-    // Verificação de Status PRO do Grupo
+    const toggleSelectAll = () => {
+        if (selectedForDraw.length === match.confirmedPlayers?.length) {
+            // Se todos já estão selecionados, limpa a seleção
+            setSelectedForDraw([]);
+        } else {
+            // Caso contrário, seleciona todos os confirmados
+            setSelectedForDraw(match.confirmedPlayers || []);
+        }
+    };
+
     useEffect(() => {
         const checkGroupStatus = async () => {
             const gDoc = await getDoc(doc(db, "groups", groupId));
@@ -578,6 +587,14 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
                         <Card className="bg-white/[0.03] border-white/5 rounded-[2rem] p-6 shadow-lg border-none">
                             <div className="flex items-center justify-between mb-4 px-1">
                                 <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-white/40">Check-in Sorteio</h3>
+                                {isAdmin && match.confirmedPlayers?.length > 0 && (
+                                    <button
+                                        onClick={toggleSelectAll}
+                                        className="text-[9px] font-black uppercase italic text-primary/60 hover:text-primary transition-colors underline underline-offset-4"
+                                    >
+                                        {selectedForDraw.length === match.confirmedPlayers?.length ? "Desmarcar Todos" : "Selecionar Todos"}
+                                    </button>
+                                )}
                                 <Badge variant="outline" className="text-primary border-primary/20 text-[9px] font-black">{selectedForDraw.length}/{match.confirmedPlayers?.length || 0}</Badge>
                             </div>
                             <div className="grid grid-cols-1 gap-2 max-h-[450px] overflow-y-auto pr-2 custom-scrollbar">

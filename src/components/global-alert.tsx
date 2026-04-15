@@ -1,14 +1,27 @@
-import {useEffect, useState} from "react"
-import {subscribeToNotifications, type SystemNotification} from "@/lib/notifications-service"
-import {AlertTriangle, Bell, X} from "lucide-react"
-import {AnimatePresence, motion} from "framer-motion"
+"use client"
+
+import { useEffect, useState } from "react"
+import { subscribeToNotifications, type SystemNotification } from "@/lib/notifications-service"
+import { AlertTriangle, Bell, X } from "lucide-react"
+import { AnimatePresence, motion } from "framer-motion"
+import { useAuth } from "@/contexts/auth-context"
 
 export function GlobalAlert() {
+    const { user } = useAuth()
     const [notif, setNotif] = useState<SystemNotification | null>(null)
     const [isVisible, setIsVisible] = useState(false)
 
     useEffect(() => {
-        const unsubscribe = subscribeToNotifications((notifs) => {
+        // Se não houver usuário, garantimos que o estado seja limpo.
+        // O ESLint aceita o setState aqui se ele for condicional e
+        // acompanhado de um retorno para evitar execuções desnecessárias.
+        if (!user?.uid) {
+            if (notif) setNotif(null);
+            if (isVisible) setIsVisible(false);
+            return;
+        }
+
+        const unsubscribe = subscribeToNotifications(user.uid, (notifs) => {
             if (notifs.length > 0) {
                 const latest = notifs[0]
                 const hasSeen = localStorage.getItem(`notif_seen_${latest.id}`)
@@ -17,11 +30,18 @@ export function GlobalAlert() {
                     setNotif(latest)
                     setIsVisible(true)
                 }
+            } else {
+                // Se a lista de notificações vier vazia (ex: deletada no banco)
+                setNotif(null)
+                setIsVisible(false)
             }
         })
 
         return () => unsubscribe()
-    }, [])
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [user?.uid])
+    // Nota: Adicionamos a verificação 'if (notif)' para disparar o setState
+    // apenas se realmente houver algo para limpar, mitigando o cascading render.
 
     const handleClose = () => {
         if (notif?.id) {
@@ -30,11 +50,11 @@ export function GlobalAlert() {
         setIsVisible(false)
     }
 
-    // Definir ícone e título baseado no tipo
     const getConfig = (type: string) => {
         switch (type) {
             case 'warning': return { icon: <AlertTriangle size={18} />, title: "Atenção" };
             case 'error': return { icon: <AlertTriangle size={18} />, title: "Urgente" };
+            case 'success': return { icon: <Bell size={18} />, title: "Sucesso" };
             default: return { icon: <Bell size={18} />, title: "Comunicado Oficial" };
         }
     }
@@ -43,7 +63,7 @@ export function GlobalAlert() {
 
     return (
         <AnimatePresence>
-            {isVisible && notif && (
+            {isVisible && notif && user?.uid && (
                 <motion.div
                     initial={{ y: -100, opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}
