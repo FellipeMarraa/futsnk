@@ -95,7 +95,7 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
     const [ownerData, setOwnerData] = useState<any>(null);
 
     // Permissão unificada (Dono ou Admin Supremo)
-    const userIsAdmin = isUserAdmin(group, user);
+    const userIsAdmin = group ? isUserAdmin(group, user) : false;
     const isGroupPro = (group?.isPro && ownerData?.isPro) || isSuperAdmin;
 
     const latestMatchPlayers = matches.length > 0 ? matches[0].confirmedPlayers || [] : [];
