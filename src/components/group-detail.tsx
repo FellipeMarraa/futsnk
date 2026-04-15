@@ -19,7 +19,7 @@ import {
 } from "lucide-react"
 import {useAuth} from "@/contexts/auth-context"
 import {deleteGroup, getGroupById, isUserAdmin} from "@/lib/firebase-services.ts"
-import {collection, doc, getDoc, onSnapshot, orderBy, query} from "firebase/firestore"
+import {collection, doc, getDoc, onSnapshot, orderBy, query, updateDoc} from "firebase/firestore"
 import {db} from "@/lib/firebase.ts"
 import {useToast} from "@/hooks/use-toast"
 
@@ -92,7 +92,15 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
     const [ownerData, setOwnerData] = useState<any>(null);
 
     const userIsAdmin = group ? isUserAdmin(group, user) : false;
-    const isGroupPro = (group?.isPro && ownerData?.isPro) || isSuperAdmin;
+    const isGroupPro = ownerData?.isPro || group?.isPro || isSuperAdmin;
+
+    useEffect(() => {
+        if (group && ownerData?.isPro && !group.isPro && group.ownerId === user?.uid) {
+            const groupRef = doc(db, "groups", group.id);
+            updateDoc(groupRef, { isPro: true });
+        }
+    }, [group, ownerData, user]);
+
     const latestMatchPlayers = matches.length > 0 ? matches[0].confirmedPlayers || [] : [];
 
     useEffect(() => {

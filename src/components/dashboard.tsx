@@ -78,7 +78,7 @@ export function Dashboard({ onSelectGroup }: { onSelectGroup: (groupId: string) 
     }, [searchParams, setSearchParams, toast]);
 
     const fetchGroups = async () => {
-        if (!user?.email) {
+        if (!user?.email || !user?.uid) {
             setLoading(false);
             return;
         }
@@ -86,7 +86,23 @@ export function Dashboard({ onSelectGroup }: { onSelectGroup: (groupId: string) 
         try {
             setLoading(true)
             const userGroups = await getUserGroups(user.email)
-            setGroups(userGroups)
+
+            // --- NOVA LÓGICA DE SINCRONIZAÇÃO PRO ---
+            if (isPro || isSuperAdmin) {
+                // Adicionamos (group: any) para o TS parar de reclamar das propriedades
+                const updatedGroups = await Promise.all(userGroups.map(async (group: any) => {
+                    // Agora o TS permite acessar ownerId e isPro
+                    if (group.ownerId === user?.uid && !group.isPro) {
+                        const groupRef = doc(db, "groups", group.id);
+                        await updateDoc(groupRef, { isPro: true });
+                        return { ...group, isPro: true };
+                    }
+                    return group;
+                }));
+                setGroups(updatedGroups);
+            } else {
+                setGroups(userGroups);
+            }
         } catch (error) {
             console.error(error)
         } finally {
