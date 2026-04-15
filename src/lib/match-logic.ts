@@ -1,5 +1,5 @@
-import { db } from "./firebase";
-import { collection, doc, getDocs, updateDoc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import {db} from "./firebase";
+import {collection, doc, getDocs, serverTimestamp, setDoc, updateDoc} from "firebase/firestore";
 
 interface PlayerMeta {
     id: string;
@@ -41,7 +41,7 @@ export const MatchLogic = {
             let calculatedMvp = "";
             const preMatchStats: any[] = [];
 
-            const MULTIPLICADOR = 23.34;
+            const MULTIPLICADOR = 25;
 
             for (const playerName of players) {
                 const nameLower = playerName.toLowerCase().trim();
@@ -54,22 +54,18 @@ export const MatchLogic = {
 
                 const targetDocId = foundMeta ? foundMeta.id : nameLower;
                 const metaRef = doc(db, "groups", groupId, "players_meta", targetDocId);
-                const metaDoc = await getDoc(metaRef);
 
-                let current = { technique: 70, speed: 70, finishing: 70, defense: 70 };
-                if (metaDoc.exists()) {
-                    const d = metaDoc.data();
-                    current = {
-                        technique: Number(d.technique) || 70,
-                        speed: Number(d.speed) || 70,
-                        finishing: Number(d.finishing) || 70,
-                        defense: Number(d.defense) || 70
-                    };
-                }
+                // --- OTIMIZAÇÃO: Usar os dados que já buscamos acima em vez de getDoc ---
+                const current = {
+                    technique: Number(foundMeta?.technique) || 70,
+                    speed: Number(foundMeta?.speed) || 70,
+                    finishing: Number(foundMeta?.finishing) || 70,
+                    defense: Number(foundMeta?.defense) || 70
+                };
 
                 preMatchStats.push({ playerId: targetDocId, oldStats: { ...current } });
                 const acc = statsAccumulator[nameLower];
-                let round = { technique: 0, speed: 0, finishing: 0, defense: 0 };
+                const round = { technique: 75, speed: 75, finishing: 75, defense: 75 }; // Default 3 estrelas (75) se não houver votos
 
                 if (acc && acc.technique.length > 0) {
                     const count = acc.technique.length;
@@ -83,17 +79,27 @@ export const MatchLogic = {
                         bestRoundPerf = perf;
                         calculatedMvp = foundMeta?.nomeLista || playerName;
                     }
-                } else {
-                    const NOTA_PADRAO = 70;
-                    round = {
-                        technique: NOTA_PADRAO,
-                        speed: NOTA_PADRAO,
-                        finishing: NOTA_PADRAO,
-                        defense: NOTA_PADRAO
-                    };
                 }
 
-                const calc = (curr: number, rnd: number) => rnd <= curr ? curr : Number(((curr * 0.90) + (rnd * 0.10)).toFixed(2));
+                const calc = (curr: number, rnd: number) => {
+                    const PISO_SISTEMA = 70;
+                    const TETO_SISTEMA = 99; // Opcional: Garante que não passe de 99
+
+                    // Se a nota da rodada for maior, sobe 10% da diferença
+                    if (rnd > curr) {
+                        const novoValor = (curr * 0.90) + (rnd * 0.10);
+                        return Number(Math.min(novoValor, TETO_SISTEMA).toFixed(2));
+                    }
+
+                    // Se for Elite (>= 85) e a nota for menor, cai 5% da diferença
+                    if (curr >= 85) {
+                        const queda = (curr * 0.95) + (rnd * 0.05);
+                        return Number(Math.max(queda, PISO_SISTEMA).toFixed(2));
+                    }
+
+                    // Abaixo de 85, a nota nunca cai
+                    return curr;
+                };
 
                 await setDoc(metaRef, {
                     nomeLista: foundMeta?.nomeLista || playerName,

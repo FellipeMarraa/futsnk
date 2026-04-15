@@ -1,6 +1,5 @@
 import {useEffect, useState} from "react"
 import {
-    AlertCircle,
     ArrowLeft,
     Calendar,
     Check,
@@ -8,7 +7,9 @@ import {
     ChevronLeft,
     ChevronRight,
     Copy,
+    Crown,
     Loader2,
+    Lock,
     MoreVertical,
     Pencil,
     PlayCircle,
@@ -17,7 +18,7 @@ import {
     Trash2,
     UserMinus,
     Users,
-    Crown
+    Zap
 } from "lucide-react"
 import {Button} from "@/components/ui/button"
 import {Card} from "@/components/ui/card"
@@ -60,6 +61,7 @@ import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar"
 import {Badge} from "@/components/ui/badge"
 import {Input} from "@/components/ui/input"
 import {MatchRatingModal} from "@/components/match-rating-modal"
+import {UpgradePlanModal} from "@/components/upgrade-plan.tsx"
 
 interface MatchDetailProps {
     groupId: string
@@ -69,12 +71,12 @@ interface MatchDetailProps {
 }
 
 export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: MatchDetailProps) {
-    const { nomeLista, user } = useAuth()
+    const { nomeLista, user, isSuperAdmin, isPro } = useAuth()
     const { toast } = useToast()
 
     const [match, setMatch] = useState(initialMatch)
     const [rawList, setRawList] = useState("")
-    const [votedPlayerNames, setVotedPlayerNames] = useState<string[]>([])
+    const [, setVotedPlayerNames] = useState<string[]>([])
     const [playersMeta, setPlayersMeta] = useState<Record<string, any>>({})
     const [isProcessing, setIsProcessing] = useState(false)
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
@@ -82,8 +84,23 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
     const [editDate, setEditDate] = useState(initialMatch.date || "")
     const [activeTeamTab, setActiveTeamTab] = useState(0)
     const [isRatingModalOpen, setIsRatingModalOpen] = useState(false)
+    const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false)
     const [selectedForDraw, setSelectedForDraw] = useState<string[]>([]);
     const [hasLoadedInitialPlayers, setHasLoadedInitialPlayers] = useState(false);
+    const [groupIsPro, setGroupIsPro] = useState(false);
+
+    // Verificação de Status PRO do Grupo
+    useEffect(() => {
+        const checkGroupStatus = async () => {
+            const gDoc = await getDoc(doc(db, "groups", groupId));
+            if (gDoc.exists()) {
+                setGroupIsPro(gDoc.data().isPro || false);
+            }
+        };
+        checkGroupStatus();
+    }, [groupId]);
+
+    const hasProAccess = isSuperAdmin || isPro || groupIsPro;
 
     useEffect(() => {
         const matchRef = doc(db, "groups", groupId, "matches", initialMatch.id);
@@ -126,9 +143,9 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
         return () => { unsubMatch(); unsubRatings(); unsubMeta(); };
     }, [initialMatch.id, groupId]);
 
-    const pendingPlayers = (match.confirmedPlayers || []).filter((name: string) =>
-        !votedPlayerNames.includes(name.toLowerCase().trim())
-    );
+    // const pendingPlayers = (match.confirmedPlayers || []).filter((name: string) =>
+    //     !votedPlayerNames.includes(name.toLowerCase().trim())
+    // );
 
     const togglePlayerSelection = (name: string) => {
         setSelectedForDraw(prev =>
@@ -218,27 +235,56 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
         finally { setIsProcessing(false) }
     }
 
+    // Substitua sua função handleDraw por esta:
+
     const handleDraw = async () => {
         if (selectedForDraw.length < 2) {
-            toast({ variant: "destructive", title: "POUCOS ATLETAS", description: "Marque quem já chegou para o sorteio." });
+            toast({
+                variant: "destructive",
+                title: "POUCOS ATLETAS",
+                description: "Marque na lista quem já chegou."
+            });
             return;
         }
-        setIsProcessing(true)
+
+        // --- CORREÇÃO DA TRAVA ---
+        // Se o status NÃO for open (ou seja, já foi sorteado) e o cara NÃO é PRO
+        if (match.status !== "open" && !hasProAccess) {
+            setIsUpgradeModalOpen(true);
+            // CRITICAL: O return impede que o código abaixo (try/catch) seja executado
+            return;
+        }
+
+        setIsProcessing(true);
         try {
             const { DrawService } = await import("@/lib/draw.service.ts");
             const presentPlayers = selectedForDraw;
-            const absentPlayers = (match.confirmedPlayers || []).filter((n: string) => !selectedForDraw.includes(n));
-            const result = await DrawService.calculateTeams(groupId, presentPlayers, absentPlayers)
+            const absentPlayers = (match.confirmedPlayers || []).filter(
+                (n: string) => !selectedForDraw.includes(n)
+            );
+
+            const useSmartDraw = hasProAccess;
+
+            const result = await DrawService.calculateTeams(
+                groupId,
+                presentPlayers,
+                absentPlayers,
+                useSmartDraw
+            );
 
             await updateDoc(doc(db, "groups", groupId, "matches", match.id), {
                 teams: result,
                 status: "drawn",
                 updatedAt: new Date()
-            })
-            toast({ title: "SORTEIO REALIZADO" })
-        } catch (e) { toast({ variant: "destructive", title: "ERRO NO SORTEIO" }) }
-        finally { setIsProcessing(false) }
-    }
+            });
+
+            toast({ title: hasProAccess ? "EQUILÍBRIO PRO APLICADO" : "SORTEIO ALEATÓRIO REALIZADO" });
+        } catch (e) {
+            toast({ variant: "destructive", title: "ERRO NO SORTEIO" });
+        } finally {
+            setIsProcessing(false);
+        }
+    };
 
     const handleOpenVoting = async () => {
         setIsProcessing(true)
@@ -303,17 +349,17 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
         return (
             <div className={`absolute flex flex-col items-center transition-all duration-700 animate-in zoom-in-50 ${className}`}>
                 <div className="relative">
-                    <Avatar className="size-14 border-2 border-primary/40 shadow-[0_0_15px_rgba(234,255,0,0.2)] bg-zinc-900">
+                    <Avatar className={`size-14 border-2 shadow-2xl bg-zinc-900 ${hasProAccess ? 'border-primary/60 shadow-primary/20' : 'border-white/20'}`}>
                         <AvatarImage src={photo} className="object-cover" />
                         <AvatarFallback className="text-white font-black italic text-[10px] bg-zinc-800 flex items-center justify-center">
                             {playerName.substring(0, 1).toUpperCase()}
                         </AvatarFallback>
                     </Avatar>
-                    <div className="absolute -top-1 -right-1 bg-primary text-black text-[8px] font-black px-1.5 rounded-full ring-2 ring-emerald-950 min-w-5 h-5 flex items-center justify-center">
+                    <div className="absolute -top-1 -right-1 bg-primary text-black text-[8px] font-black px-1.5 rounded-full ring-2 ring-zinc-950 min-w-5 h-5 flex items-center justify-center">
                         {displayOvr > 99 ? 99 : displayOvr}
                     </div>
                 </div>
-                <span className="mt-1 bg-black/60 backdrop-blur-md px-2.5 py-0.5 rounded-full text-[9px] font-black text-white uppercase italic border border-white/10 max-w-[90px] truncate">
+                <span className="mt-1 bg-black/80 backdrop-blur-md px-2.5 py-0.5 rounded-full text-[9px] font-black text-white uppercase italic border border-white/10 max-w-[90px] truncate">
                     {playerName.split(' ')[0]}
                 </span>
             </div>
@@ -322,7 +368,7 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
 
     return (
         <div className="min-h-screen bg-background text-foreground pb-32 font-sans selection:bg-primary/30">
-            <header className="sticky top-0 z-50 bg-background/60 backdrop-blur-md border-b border-white/5 p-4">
+            <header className="sticky top-0 z-40 bg-background/60 backdrop-blur-md border-b border-white/5 p-4">
                 <div className="max-w-5xl mx-auto flex items-center justify-between font-sans">
                     <div className="flex items-center gap-4">
                         <button onClick={onBack} className="p-2 hover:bg-white/5 rounded-full text-white outline-none"><ArrowLeft className="size-5"/></button>
@@ -334,7 +380,10 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
                                     {getSafeDateLabel()}
                                 </h2>
                             )}
-                            <p className="text-[8px] font-bold text-primary uppercase tracking-[0.2em] mt-0.5">Rodada Oficial</p>
+                            <p className="text-[8px] font-bold text-primary uppercase tracking-[0.2em] mt-0.5 flex items-center gap-1">
+                                {hasProAccess && <Zap className="size-2 fill-primary" />}
+                                {hasProAccess ? "Rodada Elite" : "Rodada Basic"}
+                            </p>
                         </div>
                     </div>
                     {isAdmin && (
@@ -379,12 +428,32 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
                                 </div>
                                 {isAdmin && match.status !== "finished" && (
                                     <div className="mb-4">
-                                        <Button onClick={handleDraw} disabled={isProcessing} variant="outline" className="bg-white/5 border-white/10 text-white/60 hover:text-white text-[9px] font-black uppercase italic h-8 rounded-lg">
-                                            <RefreshCw className={`size-3 mr-2 ${isProcessing ? 'animate-spin' : ''}`} /> Refazer Equilíbrio
+                                        <Button
+                                            onClick={handleDraw}
+                                            disabled={isProcessing}
+                                            className={`w-full h-11 font-black uppercase italic rounded-xl transition-all ${
+                                                match.status !== "open" && !hasProAccess
+                                                    ? "bg-zinc-800 text-white/40 border border-white/5" // Visual de Bloqueado
+                                                    : "bg-primary text-black" // Visual Normal
+                                            }`}
+                                        >
+                                            {isProcessing ? <Loader2 className="animate-spin size-4" /> : (
+                                                <>
+                                                    {match.status !== "open" ? (
+                                                        hasProAccess ? (
+                                                            <><RefreshCw className="size-3 mr-2" /> Refazer Equilíbrio PRO</>
+                                                        ) : (
+                                                            <><Lock className="size-3 mr-2 text-primary" /> Refazer (Apenas PRO)</>
+                                                        )
+                                                    ) : (
+                                                        hasProAccess ? <><Zap className="size-3 mr-2" /> Sorteio Inteligente</> : <><RefreshCw className="size-3 mr-2" /> Sorteio Aleatório</>
+                                                    )}
+                                                </>
+                                            )}
                                         </Button>
                                     </div>
                                 )}
-                                <div className="relative aspect-[3/4] w-full max-w-[320px] mx-auto bg-emerald-950/40 rounded-[3rem] border-2 border-white/5 shadow-2xl overflow-hidden">
+                                <div className={`relative aspect-[3/4] w-full max-w-[320px] mx-auto bg-emerald-950/40 rounded-[3rem] border-2 shadow-2xl overflow-hidden ${hasProAccess ? 'border-primary/20' : 'border-white/5'}`}>
                                     <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]" />
                                     <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-16 border-b-2 border-white/10 rounded-b-full" />
                                     <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-48 h-20 border-t-2 border-white/10 rounded-t-full" />
@@ -417,12 +486,25 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
                             <div className="aspect-[3/4] flex flex-col items-center justify-center bg-white/[0.02] border-2 border-dashed border-white/5 rounded-[3rem] text-center p-8">
                                 {match.confirmedPlayers?.length > 0 ? (
                                     <div className="space-y-4 text-center">
-                                        <Users className="size-12 text-primary mx-auto opacity-20" />
+                                        <div className="relative">
+                                            <Users className="size-12 text-primary mx-auto opacity-20" />
+                                            {!hasProAccess && <Lock className="size-4 text-primary absolute bottom-0 right-1/2 translate-x-6" />}
+                                        </div>
                                         <h4 className="text-white font-black italic uppercase tracking-tighter">Sorteio Pendente</h4>
-                                        <p className="text-[10px] text-white/40 uppercase font-bold">Marque na lista ao lado quem já chegou para equilibrar os times A e B.</p>
-                                        {isAdmin && <Button onClick={handleDraw} disabled={isProcessing} className="bg-primary text-black font-black uppercase text-[10px] h-11 px-8 rounded-xl shadow-lg">
-                                            {isProcessing ? <Loader2 className="animate-spin size-4" /> : "Sortear com Presentes"}
-                                        </Button>}
+                                        <p className="text-[10px] text-white/40 uppercase font-bold">Marque na lista ao lado quem já chegou para realizar o sorteio.</p>
+                                        {isAdmin && (
+                                            <Button onClick={handleDraw} disabled={isProcessing} className="bg-primary text-black font-black uppercase text-[10px] h-11 px-8 rounded-xl shadow-lg group">
+                                                {isProcessing ? <Loader2 className="animate-spin size-4" /> : (
+                                                    <>
+                                                        {hasProAccess ? <Zap className="size-3 mr-2" /> : <RefreshCw className="size-3 mr-2" />}
+                                                        {hasProAccess ? "Equilibrar Times PRO" : "Sorteio Aleatório"}
+                                                    </>
+                                                )}
+                                            </Button>
+                                        )}
+                                        {!hasProAccess && isAdmin && (
+                                            <p className="text-[8px] text-primary/60 font-black uppercase italic">Upgrade PRO para equilibrar por nível</p>
+                                        )}
                                     </div>
                                 ) : (
                                     <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/20">Aguardando Convocação</p>
@@ -433,13 +515,20 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
                         {/* SECTION: MISS DO RACHA (EX-MVP) */}
                         {match.status === 'finished' && match.mvp && (
                             <div className="w-full mt-8 flex justify-center animate-in fade-in slide-in-from-bottom-4 duration-700">
-                                <Card className="bg-white/[0.03] border-white/5 rounded-3xl p-4 flex items-center gap-4 w-full max-w-[320px] relative overflow-hidden group">
-                                    <div className="absolute top-0 right-0 p-2 opacity-10">
-                                        <Crown className="size-12 text-primary rotate-12" />
-                                    </div>
+                                <Card className={`relative overflow-hidden group rounded-3xl p-4 flex items-center gap-4 w-full max-w-[320px] transition-all
+                                    ${hasProAccess
+                                        ? 'bg-primary/10 border-primary/30 shadow-[0_0_25px_rgba(234,255,0,0.15)]'
+                                        : 'bg-white/[0.03] border-white/5 opacity-80'
+                                    }`}>
+
+                                    {hasProAccess && (
+                                        <div className="absolute top-0 right-0 p-2 opacity-20">
+                                            <Crown className="size-12 text-primary rotate-12" />
+                                        </div>
+                                    )}
 
                                     <div className="relative shrink-0">
-                                        <Avatar className="size-16 border-2 border-primary/50 shadow-[0_0_20px_rgba(234,255,0,0.2)]">
+                                        <Avatar className={`size-16 border-2 transition-all ${hasProAccess ? 'border-primary shadow-[0_0_20px_rgba(234,255,0,0.4)]' : 'border-white/20'}`}>
                                             <AvatarImage
                                                 src={playersMeta[match.mvp.toLowerCase()]?.photoURL}
                                                 className="object-cover"
@@ -448,24 +537,30 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
                                                 {match.mvp[0].toUpperCase()}
                                             </AvatarFallback>
                                         </Avatar>
-                                        <div className="absolute -bottom-1 -right-1 bg-primary p-1 rounded-full shadow-lg">
-                                            <Star className="size-3 text-black fill-black" />
+                                        <div className={`absolute -bottom-1 -right-1 p-1 rounded-full shadow-lg ${hasProAccess ? 'bg-primary' : 'bg-zinc-700'}`}>
+                                            <Star className={`size-3 ${hasProAccess ? 'text-black fill-black' : 'text-white/40'}`} />
                                         </div>
                                     </div>
 
                                     <div className="flex flex-col min-w-0">
                                         <div className="flex items-center gap-1.5 mb-0.5">
-                                            <Crown className="size-3 text-primary shrink-0" />
-                                            <span className="text-[9px] font-black text-primary uppercase tracking-[0.2em] italic">
-                                                Miss do Racha
+                                            {hasProAccess ? (
+                                                <Crown className="size-3 text-primary shrink-0" />
+                                            ) : (
+                                                <Zap className="size-3 text-white/20 shrink-0" />
+                                            )}
+                                            <span className={`text-[9px] font-black uppercase tracking-[0.2em] italic ${hasProAccess ? 'text-primary' : 'text-white/30'}`}>
+                                                {hasProAccess ? "Miss do Racha Elite" : "Destaque da Rodada"}
                                             </span>
                                         </div>
                                         <h3 className="text-lg font-black italic uppercase text-white truncate tracking-tighter leading-none">
                                             {match.mvp}
                                         </h3>
-                                        <p className="text-[8px] font-bold text-white/30 uppercase tracking-widest mt-1">
-                                            Destaque da Rodada
-                                        </p>
+                                        {!hasProAccess && (
+                                            <p className="text-[7px] font-black text-primary/40 uppercase mt-1 italic">
+                                                Upgrade PRO para ver Raio-X
+                                            </p>
+                                        )}
                                     </div>
                                 </Card>
                             </div>
@@ -473,49 +568,6 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
                     </div>
 
                     <div className="lg:col-span-4 space-y-6">
-                        {isAdmin && match.status === 'voting_open' && (
-                            <>
-                                {pendingPlayers.length > 0 ? (
-                                    <Card className="bg-amber-500/10 border-amber-500/20 rounded-[2rem] p-6 animate-in fade-in slide-in-from-right-4 duration-500">
-                                        <div className="flex items-center justify-between mb-4">
-                                            <div className="flex items-center gap-2">
-                                                <AlertCircle className="size-4 text-amber-500" />
-                                                <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-500">Atletas Sem Voto</h3>
-                                            </div>
-                                            <Button
-                                                onClick={() => setIsRatingModalOpen(true)}
-                                                variant="ghost"
-                                                className="h-7 px-3 bg-amber-500/20 text-amber-500 hover:bg-amber-500/30 text-[8px] font-black uppercase rounded-lg"
-                                            >
-                                                Votar Agora
-                                            </Button>
-                                        </div>
-                                        <div className="flex flex-wrap gap-2">
-                                            {pendingPlayers.map((name: string) => (
-                                                <Badge
-                                                    key={name}
-                                                    variant="outline"
-                                                    className="bg-black/20 border-amber-500/30 text-white/60 text-[8px] font-bold uppercase italic px-3 py-1 rounded-full cursor-pointer hover:border-amber-500 transition-colors"
-                                                    onClick={() => setIsRatingModalOpen(true)}
-                                                >
-                                                    {name}
-                                                </Badge>
-                                            ))}
-                                        </div>
-                                        <p className="text-[8px] text-white/20 font-bold uppercase mt-4 leading-tight italic">
-                                            * Use seu voto de admin para avaliar quem ficou no vácuo antes de encerrar.
-                                        </p>
-                                    </Card>
-                                ) : (
-                                    <Card className="bg-emerald-500/10 border-emerald-500/20 rounded-[2rem] p-6 text-center border-dashed">
-                                        <CheckCircle2 className="size-6 text-emerald-500 mx-auto mb-2" />
-                                        <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500">Tudo Pronto!</h3>
-                                        <p className="text-[9px] text-white/40 font-bold uppercase mt-1">Todos já possuem ao menos 1 voto.</p>
-                                    </Card>
-                                )}
-                            </>
-                        )}
-
                         {isAdmin && match.status === 'open' && (
                             <Card className="bg-[#1a1a1e] border-white/5 rounded-[2rem] p-6 shadow-2xl border-none">
                                 <Textarea placeholder="Cole a lista..." className="bg-black/20 border-white/10 text-[11px] font-bold rounded-xl min-h-[150px] mb-4 text-white" value={rawList} onChange={(e) => setRawList(e.target.value)} />
@@ -554,6 +606,7 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
                 </div>
             </main>
 
+            <UpgradePlanModal isOpen={isUpgradeModalOpen} onClose={() => setIsUpgradeModalOpen(false)} />
             {user && nomeLista && <MatchRatingModal isAdmin={isAdmin} isOpen={isRatingModalOpen} onClose={() => setIsRatingModalOpen(false)} match={match} currentUser={user} nomeLista={nomeLista} groupId={groupId} />}
 
             <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>

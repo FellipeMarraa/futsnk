@@ -2,11 +2,13 @@ import {
   addDoc,
   arrayUnion,
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
   orderBy,
   query,
+  runTransaction,
   serverTimestamp,
   Timestamp,
   updateDoc,
@@ -18,8 +20,6 @@ import type {Player} from "@/lib/types.ts";
 
 const PLAYERS_COLLECTION = 'players';
 const GROUPS_COLLECTION = 'groups';
-
-// --- FUNÇÕES AUXILIARES DE GRUPO ---
 
 export const getUserGroups = async (email: string) => {
   if (!email) return [];
@@ -36,12 +36,13 @@ export const getGroupById = async (id: string) => {
   return docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } : null;
 };
 
-export const isUserAdmin = (group: any, email: string) => {
-  if (!group || !email) return false;
-  return group.adminsEmails?.includes(email.toLowerCase()) || false;
+export const isUserAdmin = (group: any, user: any): boolean => {
+  if (!group || !user) return false;
+  if (user.isSuperAdmin) return true;
+  const isOwner = group.ownerId === user.uid;
+  const isExplicitAdmin = group.adminsEmails?.includes(user.email?.toLowerCase());
+  return isOwner || isExplicitAdmin;
 };
-
-// --- SERVIÇO DE GRUPOS ---
 
 export const GroupService = {
   async createGroupFull(groupData: {
@@ -54,6 +55,7 @@ export const GroupService = {
     userEmail: string;
     courtValue?: number;
     balance?: number;
+    isPro?: boolean; // Adicione este campo se não tiver
   }) {
     try {
       const groupRef = await addDoc(collection(db, GROUPS_COLLECTION), {
@@ -68,13 +70,16 @@ export const GroupService = {
         membersEmails: [groupData.userEmail.toLowerCase()],
         admins: [groupData.userId],
         adminsEmails: [groupData.userEmail.toLowerCase()],
-        players: [],
+        ownerId: groupData.userId, // O userId vira o ownerId aqui
+        isPro: groupData.isPro || false,
+        planType: groupData.isPro ? 'pro' : 'free',
+        status: 'active',
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
       return groupRef.id;
     } catch (error) {
-      console.error("Erro ao criar grupo completo:", error);
+      console.error("Erro ao criar grupo:", error);
       throw error;
     }
   },
@@ -91,24 +96,16 @@ export const GroupService = {
     try {
       const groupRef = doc(db, GROUPS_COLLECTION, groupId);
       const groupSnap = await getDoc(groupRef);
-
       if (!groupSnap.exists()) throw new Error("Grupo não encontrado.");
-
       const groupData = groupSnap.data();
       const emailLower = userEmail.toLowerCase().trim();
+      if (groupData.membersEmails?.includes(emailLower)) return { status: 'already_member' };
 
-      // Verifica se já é membro para evitar duplicidade
-      if (groupData.membersEmails?.includes(emailLower)) {
-        return { status: 'already_member' };
-      }
-
-      // Adiciona o usuário aos arrays de membros
       await updateDoc(groupRef, {
         members: arrayUnion(userId),
         membersEmails: arrayUnion(emailLower),
         updatedAt: serverTimestamp()
       });
-
       return { status: 'success' };
     } catch (error) {
       console.error("Erro ao entrar no grupo via ID:", error);
@@ -118,57 +115,33 @@ export const GroupService = {
 
   async updateGroup(groupId: string, data: any) {
     const groupRef = doc(db, GROUPS_COLLECTION, groupId);
-    await updateDoc(groupRef, {
-      ...data,
-      updatedAt: serverTimestamp()
-    });
+    await updateDoc(groupRef, { ...data, updatedAt: serverTimestamp() });
   },
 
-  /**
-   * EXCLUSÃO EM CASCATA COMPLETA
-   * Limpa Matches, Sub-votos de Matches, e Players_meta
-   */
   async deleteGroupCascade(groupId: string) {
     const batch = writeBatch(db);
-
     try {
-      // 1. Deletar Subcoleção 'players_meta'
       const playersMetaSnap = await getDocs(collection(db, GROUPS_COLLECTION, groupId, 'players_meta'));
-      playersMetaSnap.forEach((doc) => {
-        batch.delete(doc.ref);
-      });
+      playersMetaSnap.forEach((doc) => batch.delete(doc.ref));
 
-      // 2. Deletar Subcoleção 'matches' e suas respectivas subcoleções internas (votos)
       const matchesSnap = await getDocs(collection(db, GROUPS_COLLECTION, groupId, 'matches'));
-
       for (const matchDoc of matchesSnap.docs) {
-        // Deletar technical_ratings dentro da match
         const techRatingsSnap = await getDocs(collection(db, GROUPS_COLLECTION, groupId, 'matches', matchDoc.id, 'technical_ratings'));
         techRatingsSnap.forEach(v => batch.delete(v.ref));
-
-        // Deletar votes (MVP antigo) dentro da match
         const legacyVotesSnap = await getDocs(collection(db, GROUPS_COLLECTION, groupId, 'matches', matchDoc.id, 'votes'));
         legacyVotesSnap.forEach(v => batch.delete(v.ref));
-
-        // Deletar a partida em si
         batch.delete(matchDoc.ref);
       }
 
-      // 3. Deletar o documento do Grupo
       const groupRef = doc(db, GROUPS_COLLECTION, groupId);
       batch.delete(groupRef);
-
-      // Executar tudo
       await batch.commit();
-      console.log(`Clube ${groupId} totalmente removido.`);
     } catch (error) {
       console.error("Erro ao deletar grupo em cascata:", error);
       throw error;
     }
   }
 };
-
-// --- SERVIÇO DE JOGADORES ---
 
 export const PlayerService = {
   async createPlayer(groupId: string, player: Omit<Player, 'id' | 'createdAt' | 'updatedAt'>) {
@@ -189,11 +162,7 @@ export const PlayerService = {
 
   async getPlayers(groupId: string): Promise<Player[]> {
     if (!groupId) return [];
-    const q = query(
-        collection(db, PLAYERS_COLLECTION),
-        where('groupId', '==', groupId),
-        orderBy('name', 'asc')
-    );
+    const q = query(collection(db, PLAYERS_COLLECTION), where('groupId', '==', groupId), orderBy('name', 'asc'));
     const snapshot = await getDocs(q);
     return snapshot.docs.map(doc => ({
       id: doc.id,
@@ -204,22 +173,75 @@ export const PlayerService = {
   }
 };
 
-// --- EXPORTS DIRETOS ---
+export const CouponService = {
+  async deleteCoupon(couponCode: string) {
+    try {
+      const couponRef = doc(db, 'coupons', couponCode.toUpperCase().trim());
+      await deleteDoc(couponRef);
+      return { success: true };
+    } catch (error) {
+      console.error("Erro ao deletar cupom:", error);
+      throw error;
+    }
+  },
 
-export async function createGroupFull(groupData: any) {
-  return GroupService.createGroupFull(groupData);
-}
+  async applyCoupon(userId: string, couponCode: string) {
+    const codeUpper = couponCode.toUpperCase().trim();
+    const couponRef = doc(db, 'coupons', codeUpper);
+    const userRef = doc(db, 'users', userId);
+    const usedCouponRef = doc(db, `users/${userId}/used_coupons`, codeUpper);
 
-export async function createPlayer(groupId: string, player: any) {
-  return PlayerService.createPlayer(groupId, player);
-}
+    return await runTransaction(db, async (transaction) => {
+      const couponSnap = await transaction.get(couponRef);
+      if (!couponSnap.exists()) throw new Error("Cupom inválido.");
 
-export async function getPlayers(groupId: string) {
-  return PlayerService.getPlayers(groupId);
-}
+      const couponData = couponSnap.data();
+      if (!couponData.active) throw new Error("Cupom inativo.");
 
-export const joinGroupById = (groupId: string, userId: string, userEmail: string) =>
-    GroupService.joinGroupById(groupId, userId, userEmail);
+      const currentCount = couponData.usedCount || 0;
+      if (currentCount >= couponData.maxUses) throw new Error("Limite de usos esgotado.");
 
+      const usedSnap = await transaction.get(usedCouponRef);
+      if (usedSnap.exists()) throw new Error("Você já utilizou este cupom.");
+
+      const userSnap = await transaction.get(userRef);
+      const userData = userSnap.data();
+
+      let startDate = new Date();
+      if (userData?.isPro && userData?.planExpiresAt) {
+        const currentExpiry = new Date(userData.planExpiresAt);
+        if (currentExpiry > startDate) startDate = currentExpiry;
+      }
+
+      const newExpiry = new Date(startDate);
+      newExpiry.setDate(newExpiry.getDate() + couponData.days);
+
+      transaction.update(userRef, {
+        isPro: true,
+        planExpiresAt: newExpiry.toISOString(),
+        updatedAt: serverTimestamp()
+      });
+
+      transaction.update(couponRef, {
+        usedCount: currentCount + 1,
+        usedBy: arrayUnion(userId)
+      });
+
+      transaction.set(usedCouponRef, {
+        redeemedAt: serverTimestamp(),
+        daysAdded: couponData.days
+      });
+
+      return { success: true, newExpiry };
+    });
+  },
+};
+
+export async function createGroupFull(groupData: any) { return GroupService.createGroupFull(groupData); }
+export async function createPlayer(groupId: string, player: any) { return PlayerService.createPlayer(groupId, player); }
+export async function getPlayers(groupId: string) { return PlayerService.getPlayers(groupId); }
+export const joinGroupById = (groupId: string, userId: string, userEmail: string) => GroupService.joinGroupById(groupId, userId, userEmail);
 export const updateGroup = (id: string, data: any) => GroupService.updateGroup(id, data);
 export const deleteGroup = (id: string) => GroupService.deleteGroupCascade(id);
+export const applyCoupon = (userId: string, code: string) => CouponService.applyCoupon(userId, code);
+export const deleteCoupon = (code: string) => CouponService.deleteCoupon(code);

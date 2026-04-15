@@ -5,14 +5,29 @@ import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth'
 import { auth, db } from '@/lib/firebase'
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
 import { useToast } from "@/hooks/use-toast"
+import {useNavigate} from "react-router-dom";
 
-export function LoginForm() {
+interface LoginFormProps {
+    onBack?: () => void;
+}
+
+export function LoginForm({ onBack }: LoginFormProps) {
     const [isGoogleLoading, setIsGoogleLoading] = useState(false)
     const [isFinalizing, setIsFinalizing] = useState(false)
-    // Estado para armazenar os dados temporários do Google no primeiro login
     const [needsProfile, setNeedsProfile] = useState<{ uid: string, email: string, photoURL: string, displayName: string } | null>(null)
     const [nomeEscolhido, setNomeEscolhido] = useState("")
     const { toast } = useToast()
+    const navigate = useNavigate();
+
+    const handleSuccessfulAuth = () => {
+        const redirectTo = sessionStorage.getItem('redirectAfterLogin');
+        if (redirectTo) {
+            sessionStorage.removeItem('redirectAfterLogin');
+            navigate(redirectTo);
+        } else {
+            navigate('/');
+        }
+    };
 
     const handleGoogleLogin = async () => {
         setIsGoogleLoading(true)
@@ -25,23 +40,20 @@ export function LoginForm() {
             const userSnap = await getDoc(userRef)
 
             if (!userSnap.exists()) {
-                await setDoc(userRef, {
+                setNeedsProfile({
                     uid: user.uid,
-                    email: user.email,
-                    displayName: user.displayName,
-                    nomeLista: "",
-                    photoURL: user.photoURL,
-                    isAdmin: false,
-                    createdAt: serverTimestamp(),
-                    lastLogin: serverTimestamp()
+                    email: user.email || "",
+                    displayName: user.displayName || "",
+                    photoURL: user.photoURL || ""
                 })
             } else {
-                // JÁ EXISTE: Apenas atualiza o último login e a foto
                 await setDoc(userRef, {
                     lastLogin: serverTimestamp(),
                     photoURL: user.photoURL
                 }, { merge: true })
-                toast({ title: "AUTORIZADO", description: "Bem-vindo de volta ao clube!" })
+                toast({ title: "AUTORIZADO", description: "Bem-vindo de volta ao clube!" });
+
+                handleSuccessfulAuth();
             }
         } catch (error) {
             toast({ variant: "destructive", title: "ERRO", description: "Falha na conexão com o Google." });
@@ -64,7 +76,7 @@ export function LoginForm() {
                 uid: needsProfile.uid,
                 email: needsProfile.email,
                 displayName: needsProfile.displayName,
-                nomeLista: nomeEscolhido.trim(), // O nome que o usuário escolheu
+                nomeLista: nomeEscolhido.trim(),
                 photoURL: needsProfile.photoURL,
                 isAdmin: false,
                 createdAt: serverTimestamp(),
@@ -72,7 +84,8 @@ export function LoginForm() {
             })
 
             toast({ title: "PERFIL CRIADO", description: "Sua conta foi vinculada com sucesso!" })
-            setNeedsProfile(null) // Fecha o modal e entra no dashboard
+            setNeedsProfile(null)
+            handleSuccessfulAuth();
         } catch (error) {
             console.error(error)
             toast({ variant: "destructive", title: "ERRO", description: "Não conseguimos salvar seu nome." });
@@ -81,7 +94,6 @@ export function LoginForm() {
         }
     }
 
-    // --- RENDERIZAÇÃO DA TELA DE "COMO TE CHAMAM NO RACHA?" ---
     if (needsProfile) {
         return (
             <div className="relative flex min-h-screen w-full items-center justify-center bg-background p-6 overflow-hidden">
@@ -128,13 +140,25 @@ export function LoginForm() {
     // --- RENDERIZAÇÃO ORIGINAL DO LOGIN ---
     return (
         <div className="relative flex min-h-screen w-full items-center justify-center bg-background p-6 overflow-hidden">
-            {/* Formas abstratas de luz ao fundo para dar leveza */}
+            {/* Formas abstratas de luz ao fundo */}
             <div className="absolute inset-0 pointer-events-none overflow-hidden">
                 <div className="absolute top-[-10%] left-[-10%] size-[500px] bg-primary/10 blur-[120px] rounded-full" />
                 <div className="absolute bottom-[-10%] right-[-10%] size-[400px] bg-blue-500/10 blur-[120px] rounded-full" />
             </div>
 
             <div className="relative z-10 w-full max-w-[420px] animate-in fade-in slide-in-from-bottom-8 duration-700">
+
+                {/* BOTÃO VOLTAR NO TOPO */}
+                {onBack && (
+                    <button
+                        onClick={onBack}
+                        className="mb-8 flex items-center gap-2 text-[10px] font-black uppercase italic tracking-[0.2em] text-white/20 hover:text-primary transition-all group"
+                    >
+                        <span className="group-hover:-translate-x-1 transition-transform">←</span>
+                        Voltar para o início
+                    </button>
+                )}
+
                 {/* Cabeçalho */}
                 <div className="mb-10 text-center">
                     <div className="inline-flex mb-6 relative">
@@ -150,7 +174,7 @@ export function LoginForm() {
                 </div>
 
                 {/* Card de Login Estilo Vidro */}
-                <div className="fc-glass p-8 rounded-[2.5rem] fc-card-glow relative overflow-hidden group">
+                <div className="fc-glass p-8 rounded-[2.5rem] fc-card-glow relative overflow-hidden group border border-white/5">
                     {/* Linha de brilho superior */}
                     <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-white/20 to-transparent" />
 

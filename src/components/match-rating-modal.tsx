@@ -1,5 +1,5 @@
 import {useEffect, useState} from "react"
-import {CheckCircle2, Lock, Shield, Star, Target, TrendingUp, Trophy, X, Zap} from "lucide-react"
+import {CheckCircle2, Crown, Lock, Shield, Star, Target, TrendingUp, Trophy, X, Zap} from "lucide-react"
 import {Button} from "@/components/ui/button"
 import {Card} from "@/components/ui/card"
 import {Dialog, DialogContent, DialogDescription, DialogTitle,} from "@/components/ui/dialog"
@@ -7,6 +7,7 @@ import {Avatar, AvatarFallback} from "@/components/ui/avatar"
 import {useToast} from "@/hooks/use-toast"
 import {db} from "@/lib/firebase"
 import {doc, getDoc, serverTimestamp, setDoc} from "firebase/firestore"
+import {useAuth} from "@/contexts/auth-context" // Importado para checar status PRO
 
 interface RatingModalProps {
     isOpen: boolean
@@ -20,11 +21,26 @@ interface RatingModalProps {
 
 export function MatchRatingModal({ isOpen, onClose, match, currentUser, nomeLista, groupId, isAdmin }: RatingModalProps) {
     const { toast } = useToast()
+    const { isPro, isSuperAdmin } = useAuth() // Puxando autoridade
     const [step, setStep] = useState(1)
     const [ratings, setRatings] = useState<Record<string, any>>({})
     const [selectedGeneral, setSelectedGeneral] = useState<string[]>([])
     const [hasVoted, setHasVoted] = useState(false)
     const [checkingVote, setCheckingVote] = useState(true)
+    const [groupIsPro, setGroupIsPro] = useState(false)
+
+    // 1. Verificar se o grupo é PRO (Benefício guarda-chuva)
+    useEffect(() => {
+        const checkGroupStatus = async () => {
+            const gDoc = await getDoc(doc(db, "groups", groupId));
+            if (gDoc.exists()) {
+                setGroupIsPro(gDoc.data().isPro || false);
+            }
+        };
+        if (isOpen) checkGroupStatus();
+    }, [isOpen, groupId]);
+
+    const hasProFeature = isPro || groupIsPro || isSuperAdmin;
 
     useEffect(() => {
         const checkVoteStatus = async () => {
@@ -137,10 +153,13 @@ export function MatchRatingModal({ isOpen, onClose, match, currentUser, nomeList
         return (
             <Card className="bg-white/[0.03] border-white/5 p-4 rounded-[2rem] mb-4 border-none shadow-xl">
                 <div className="flex items-center gap-3 mb-4">
-                    <Avatar className="size-10 border border-primary/30">
+                    <Avatar className={`size-10 border ${hasProFeature ? 'border-primary/40' : 'border-white/10'}`}>
                         <AvatarFallback className="bg-zinc-800 text-[10px] font-black">{name[0].toUpperCase()}</AvatarFallback>
                     </Avatar>
-                    <span className="font-black italic uppercase text-sm text-white tracking-tighter">{name}</span>
+                    <div className="flex flex-col">
+                        <span className="font-black italic uppercase text-sm text-white tracking-tighter">{name}</span>
+                        {hasProFeature && <span className="text-[7px] text-primary font-black uppercase tracking-widest flex items-center gap-1"><Zap size={8} fill="currentColor"/> Perfil Elite</span>}
+                    </div>
                 </div>
                 <div className="grid grid-cols-2 gap-y-4 gap-x-6">
                     <StarRatingField label="Técnica" icon={<TrendingUp size={10}/>} value={ratings[name]?.technique || 0} onChange={(v: number) => handleStarClick(name, 'technique', v)} />
@@ -159,13 +178,16 @@ export function MatchRatingModal({ isOpen, onClose, match, currentUser, nomeList
                 className="max-w-2xl w-[95%] h-[85vh] bg-[#0c0c0e] border-white/10 p-0 overflow-hidden flex flex-col rounded-[2.5rem] outline-none"
             >
                 <div className="p-6 border-b border-white/5 flex justify-between items-center bg-zinc-900/30 shrink-0">
-                    <div>
-                        <DialogTitle className="text-xl font-black italic uppercase text-primary tracking-tighter">
-                            {isAdmin ? "Admin: Voto de Contingência" : "Avaliação Técnica"}
-                        </DialogTitle>
-                        <DialogDescription className="text-[9px] font-bold text-white/40 uppercase tracking-widest mt-1">
-                            {hasVoted && !isAdmin ? "CONCLUÍDO" : !userIsParticipant && !isAdmin ? "ACESSO NEGADO" : (step === 1 ? "PASSO 1: SEU TIME" : "PASSO 2: OUTROS ATLETAS")}
-                        </DialogDescription>
+                    <div className="flex items-center gap-3">
+                        {hasProFeature && <div className="p-2 bg-primary/10 rounded-full"><Crown size={16} className="text-primary fill-primary shadow-lg"/></div>}
+                        <div>
+                            <DialogTitle className="text-xl font-black italic uppercase text-primary tracking-tighter flex items-center gap-2">
+                                {isAdmin ? "Admin: Voto de Contingência" : "Avaliação Técnica"}
+                            </DialogTitle>
+                            <DialogDescription className="text-[9px] font-bold text-white/40 uppercase tracking-widest mt-1">
+                                {hasVoted && !isAdmin ? "CONCLUÍDO" : !userIsParticipant && !isAdmin ? "ACESSO NEGADO" : (step === 1 ? "PASSO 1: SEU TIME" : "PASSO 2: OUTROS ATLETAS")}
+                            </DialogDescription>
+                        </div>
                     </div>
                     <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full hover:bg-white/5"><X className="text-white/40"/></Button>
                 </div>
@@ -200,7 +222,23 @@ export function MatchRatingModal({ isOpen, onClose, match, currentUser, nomeList
                                     )}
                                 </div>
                             ) : (
-                                <div className="space-y-6 pb-8">
+                                <div className="space-y-6 pb-8 relative h-full">
+                                    {/* TRAVA VISUAL PRO NO PASSO 2 */}
+                                    {!hasProFeature && (
+                                        <div className="absolute inset-0 z-50 bg-[#0c0c0e]/80 backdrop-blur-md flex flex-col items-center justify-center text-center p-8 rounded-3xl">
+                                            <div className="size-16 bg-primary/10 rounded-full flex items-center justify-center mb-4 border border-primary/20">
+                                                <Lock className="size-8 text-primary" />
+                                            </div>
+                                            <h4 className="text-white font-black italic uppercase text-lg mb-2">Voto Imparcial PRO</h4>
+                                            <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest leading-relaxed max-w-[250px] mb-6">
+                                                Em Clubes Elite, você avalia os adversários para eleger o Craque da Rodada.
+                                            </p>
+                                            <Button disabled className="bg-primary/20 text-primary border border-primary/30 font-black uppercase italic text-[9px] px-6 h-10 rounded-full">
+                                                Apenas para Clubes PRO
+                                            </Button>
+                                        </div>
+                                    )}
+
                                     <div className="space-y-3">
                                         <div className="flex items-center gap-2 mb-2 px-2">
                                             <Trophy className="size-4 text-primary" />
@@ -212,8 +250,8 @@ export function MatchRatingModal({ isOpen, onClose, match, currentUser, nomeList
                                             const nameInList = n.toString().trim().toLowerCase();
                                             const myNameProfile = nomeLista.toString().trim().toLowerCase();
                                             const isMe = nameInList === myNameProfile ||
-                                                                    myNameProfile.includes(nameInList) ||
-                                                                    nameInList.includes(myNameProfile);
+                                                myNameProfile.includes(nameInList) ||
+                                                nameInList.includes(myNameProfile);
                                             return !isMe;
                                         }).map((name: string) => {
                                             const isSelected = selectedGeneral.includes(name);
@@ -256,11 +294,11 @@ export function MatchRatingModal({ isOpen, onClose, match, currentUser, nomeList
                                 onClick={() => setStep(2)}
                                 className="flex-1 bg-primary text-black font-black uppercase text-xs h-12 rounded-xl"
                             >
-                                Próximo Passo
+                                {hasProFeature ? "Votar Adversários" : "Finalizar (Básico)"}
                             </Button>
                         ) : (
                             <Button onClick={submitVotes} className="flex-1 bg-emerald-600 text-white font-black uppercase text-xs h-12 rounded-xl">
-                                Finalizar Votação
+                                Enviar Avaliações
                             </Button>
                         )}
                     </div>

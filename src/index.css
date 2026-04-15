@@ -62,6 +62,32 @@
     background-image: radial-gradient(at top left, oklch(0.25 0.04 240 / 0.4), transparent 60%),
     radial-gradient(at bottom right, oklch(0.92 0.22 110 / 0.03), transparent 50%);
   }
+
+  /* Estilização para Chrome, Edge e Safari */
+  ::-webkit-scrollbar {
+    width: 8px; /* Largura do scroll vertical */
+    height: 8px; /* Altura do scroll horizontal */
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent; /* Fundo do trilho (invisível para manter o fundo preto) */
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #27272a; /* Cor da barra (Zinc-800) */
+    border-radius: 10px; /* Bordas arredondadas para combinar com seus cards */
+    border: 2px solid #0c0c0e; /* Cria um espaçamento para a barra parecer flutuar */
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #3f3f46; /* Cor ao passar o mouse (Zinc-700) */
+  }
+
+  /* Estilização para Firefox */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #27272a transparent;
+  }
 }
 
 @layer utilities {

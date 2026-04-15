@@ -6,12 +6,14 @@ import {
   signOut
 } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
-import { doc, onSnapshot, collection, query, where, getDocs, setDoc } from 'firebase/firestore';
+import { doc, onSnapshot, collection, query, where, getDocs, setDoc, serverTimestamp } from 'firebase/firestore';
 import type {AppUser, Group} from "@/lib/auth.ts";
 
 interface AuthContextType {
   user: AppUser | null;
   isAdmin: boolean;
+  isSuperAdmin: boolean;
+  isPro: boolean;
   nomeLista: string | null;
   loading: boolean;
   userGroups: Group[];
@@ -27,6 +29,8 @@ const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AppUser | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [isPro, setIsPro] = useState(false);
   const [nomeLista, setNomeLista] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [userGroups, setUserGroups] = useState<Group[]>([]);
@@ -40,8 +44,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const groupsSnap = await getDocs(groupsQuery);
     const groups = groupsSnap.docs.map(d => ({
       id: d.id,
-      name: d.data().name
-    }));
+      ...d.data()
+    })) as unknown as Group[];
     setUserGroups(groups);
     if (groups.length > 0 && !activeGroup) setActiveGroup(groups[0]);
   };
@@ -57,7 +61,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (docSnap.exists()) {
             const data = docSnap.data();
             setUser({ ...firebaseUser, ...data } as AppUser);
+
             setIsAdmin(data.isAdmin || false);
+            setIsSuperAdmin(data.isSuperAdmin || false);
+            setIsPro(data.isPro || false);
             setNomeLista(data.nomeLista || null);
           } else {
             setDoc(doc(db, 'users', firebaseUser.uid), {
@@ -66,8 +73,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               displayName: firebaseUser.displayName,
               photoURL: firebaseUser.photoURL,
               isAdmin: false,
+              isSuperAdmin: false,
+              isPro: false,
+              planExpiresAt: null,
               nomeLista: null,
-              createdAt: new Date()
+              createdAt: serverTimestamp()
             });
           }
         });
@@ -76,6 +86,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else {
         setUser(null);
         setIsAdmin(false);
+        setIsSuperAdmin(false);
+        setIsPro(false);
         setNomeLista(null);
         setUserGroups([]);
         setActiveGroup(null);
@@ -106,6 +118,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       <AuthContext.Provider value={{
         user,
         isAdmin,
+        isSuperAdmin,
+        isPro,
         nomeLista,
         loading,
         userGroups,
