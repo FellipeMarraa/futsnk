@@ -248,22 +248,13 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
             return;
         }
 
-        // --- NOVA LÓGICA DE TRAVA ---
-
-        // 1. Se já houve um sorteio (status !== 'open') e o usuário NÃO é PRO
-        // Bloqueia a tentativa de "Refazer" o sorteio
+        // --- CORREÇÃO DA TRAVA ---
+        // Se o status NÃO for open (ou seja, já foi sorteado) e o cara NÃO é PRO
         if (match.status !== "open" && !hasProAccess) {
             setIsUpgradeModalOpen(true);
-            toast({
-                title: "REFAZER SORTEIO É PRO",
-                description: "Usuários Free só podem sortear os times uma única vez por rodada.",
-                variant: "destructive"
-            });
+            // CRITICAL: O return impede que o código abaixo (try/catch) seja executado
             return;
         }
-
-        // 2. Se o usuário tenta sortear e NÃO é PRO, garantimos que o sorteio seja ALEATÓRIO
-        // (O sorteio inteligente por OVR é apenas para hasProAccess)
 
         setIsProcessing(true);
         try {
@@ -273,19 +264,18 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
                 (n: string) => !selectedForDraw.includes(n)
             );
 
-            // Se for PRO, usa a lógica de equilíbrio. Se for FREE, força o aleatório.
             const useSmartDraw = hasProAccess;
 
             const result = await DrawService.calculateTeams(
                 groupId,
                 presentPlayers,
                 absentPlayers,
-                useSmartDraw // Você precisará passar esse booleano para o seu serviço
+                useSmartDraw
             );
 
             await updateDoc(doc(db, "groups", groupId, "matches", match.id), {
                 teams: result,
-                status: "drawn", // Muda o status de 'open' para 'drawn'
+                status: "drawn",
                 updatedAt: new Date()
             });
 
@@ -439,12 +429,26 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
                                 </div>
                                 {isAdmin && match.status !== "finished" && (
                                     <div className="mb-4">
-                                        <Button onClick={handleDraw} disabled={isProcessing} className="...">
+                                        <Button
+                                            onClick={handleDraw}
+                                            disabled={isProcessing}
+                                            className={`w-full h-11 font-black uppercase italic rounded-xl transition-all ${
+                                                match.status !== "open" && !hasProAccess
+                                                    ? "bg-zinc-800 text-white/40 border border-white/5" // Visual de Bloqueado
+                                                    : "bg-primary text-black" // Visual Normal
+                                            }`}
+                                        >
                                             {isProcessing ? <Loader2 className="animate-spin size-4" /> : (
                                                 <>
-                                                    {hasProAccess ? <Zap className="size-3 mr-2" /> : <RefreshCw className="size-3 mr-2" />}
-                                                    {/* Se já foi sorteado uma vez, mostra 'Refazer' para o PRO */}
-                                                    {match.status !== "open" ? (hasProAccess ? "Refazer Equilíbrio PRO" : "Refazer (Recurso PRO)") : "Realizar Sorteio"}
+                                                    {match.status !== "open" ? (
+                                                        hasProAccess ? (
+                                                            <><RefreshCw className="size-3 mr-2" /> Refazer Equilíbrio PRO</>
+                                                        ) : (
+                                                            <><Lock className="size-3 mr-2 text-primary" /> Refazer (Apenas PRO)</>
+                                                        )
+                                                    ) : (
+                                                        hasProAccess ? <><Zap className="size-3 mr-2" /> Sorteio Inteligente</> : <><RefreshCw className="size-3 mr-2" /> Sorteio Aleatório</>
+                                                    )}
                                                 </>
                                             )}
                                         </Button>
