@@ -26,11 +26,11 @@ export default async function handler(req: any, res: any) {
                 ],
                 external_reference: userId,
                 // AQUI ESTÁ O SEGREDO: URLs específicas para o FutMatch
-                notification_url: "https://futmatch-git-feature-multi-tenan-66d2da-fellipemarraas-projects.vercel.app/api/webhook",
+                notification_url: "https://fut-match.vercel.app/api/webhook",
                 back_urls: {
-                    success: "https://futmatch-git-feature-multi-tenan-66d2da-fellipemarraas-projects.vercel.app/?status=success",
-                    failure: "https://futmatch-git-feature-multi-tenan-66d2da-fellipemarraas-projects.vercel.app/?status=error",
-                    pending: "https://futmatch-git-feature-multi-tenan-66d2da-fellipemarraas-projects.vercel.app/?status=pending"
+                    success: "https://fut-match.vercel.app/?status=success",
+                    failure: "https://fut-match.vercel.app/?status=error",
+                    pending: "https://fut-match.vercel.app/?status=pending"
                 },
                 auto_return: "approved",
             }
