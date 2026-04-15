@@ -5,6 +5,7 @@ import JoinGroup from "@/components/join-group.tsx";
 import { AdminSupremo } from "@/components/admin-supremo.tsx";
 import { GlobalAlert } from "@/components/global-alert.tsx";
 import {PaymentSuccess} from "@/components/payment-success.tsx";
+import {LoginForm} from "@/components/login-form.tsx";
 
 function App() {
     return (
@@ -14,6 +15,8 @@ function App() {
                 <Routes>
                     {/* Rota principal do App */}
                     <Route path="/" element={<Home />} />
+
+                    <Route path="/login" element={<LoginForm onBack={() => window.history.back()} />} />
 
                     {/* Rota para os grupos (caso você use IDs na URL na Home) */}
                     <Route path="/groups/:groupId" element={<Home />} />
