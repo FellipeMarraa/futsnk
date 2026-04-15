@@ -130,7 +130,7 @@ export function CreateGroupDialog({ isOpen, onClose, onSuccess, groupToEdit }: C
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="w-[92%] max-w-[400px] bg-[#1a1a1e] border border-white/5 rounded-[2rem] shadow-2xl p-6 sm:p-8 max-h-[90vh] overflow-y-auto custom-scrollbar">
 
-                <DialogHeader className="pb-2">
+                <DialogHeader>
                     <div className="flex justify-between items-start">
                         <div>
                             <DialogTitle className="text-lg font-black italic uppercase tracking-tighter text-white flex items-center gap-2">
@@ -150,7 +150,7 @@ export function CreateGroupDialog({ isOpen, onClose, onSuccess, groupToEdit }: C
                     </div>
                 </DialogHeader>
 
-                <div className="space-y-4 py-4">
+                <div className="space-y-4">
                     <div className="space-y-1.5">
                         <Label className="text-[9px] font-black uppercase text-white/40 ml-1">Nome do Clube</Label>
                         <Input
