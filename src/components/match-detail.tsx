@@ -1,6 +1,5 @@
 import {useEffect, useState} from "react"
 import {
-    AlertCircle,
     ArrowLeft,
     Calendar,
     Check,
@@ -77,7 +76,7 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
 
     const [match, setMatch] = useState(initialMatch)
     const [rawList, setRawList] = useState("")
-    const [votedPlayerNames, setVotedPlayerNames] = useState<string[]>([])
+    const [, setVotedPlayerNames] = useState<string[]>([])
     const [playersMeta, setPlayersMeta] = useState<Record<string, any>>({})
     const [isProcessing, setIsProcessing] = useState(false)
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
@@ -144,9 +143,9 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
         return () => { unsubMatch(); unsubRatings(); unsubMeta(); };
     }, [initialMatch.id, groupId]);
 
-    const pendingPlayers = (match.confirmedPlayers || []).filter((name: string) =>
-        !votedPlayerNames.includes(name.toLowerCase().trim())
-    );
+    // const pendingPlayers = (match.confirmedPlayers || []).filter((name: string) =>
+    //     !votedPlayerNames.includes(name.toLowerCase().trim())
+    // );
 
     const togglePlayerSelection = (name: string) => {
         setSelectedForDraw(prev =>
@@ -569,34 +568,6 @@ export function MatchDetail({ groupId, match: initialMatch, onBack, isAdmin }: M
                     </div>
 
                     <div className="lg:col-span-4 space-y-6">
-                        {isAdmin && match.status === 'voting_open' && (
-                            <>
-                                {pendingPlayers.length > 0 ? (
-                                    <Card className="bg-amber-500/10 border-amber-500/20 rounded-[2rem] p-6 animate-in fade-in slide-in-from-right-4 duration-500">
-                                        <div className="flex items-center justify-between mb-4">
-                                            <div className="flex items-center gap-2">
-                                                <AlertCircle className="size-4 text-amber-500" />
-                                                <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-500">Atletas Sem Voto</h3>
-                                            </div>
-                                            <Button onClick={() => setIsRatingModalOpen(true)} variant="ghost" className="h-7 px-3 bg-amber-500/20 text-amber-500 hover:bg-amber-500/30 text-[8px] font-black uppercase rounded-lg">Votar Agora</Button>
-                                        </div>
-                                        <div className="flex flex-wrap gap-2">
-                                            {pendingPlayers.map((name: string) => (
-                                                <Badge key={name} variant="outline" className="bg-black/20 border-amber-500/30 text-white/60 text-[8px] font-bold uppercase italic px-3 py-1 rounded-full cursor-pointer hover:border-amber-500 transition-colors" onClick={() => setIsRatingModalOpen(true)}>{name}</Badge>
-                                            ))}
-                                        </div>
-                                        <p className="text-[8px] text-white/20 font-bold uppercase mt-4 leading-tight italic">* Use seu voto de admin para avaliar quem ficou no vácuo antes de encerrar.</p>
-                                    </Card>
-                                ) : (
-                                    <Card className="bg-emerald-500/10 border-emerald-500/20 rounded-[2rem] p-6 text-center border-dashed">
-                                        <CheckCircle2 className="size-6 text-emerald-500 mx-auto mb-2" />
-                                        <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500">Tudo Pronto!</h3>
-                                        <p className="text-[9px] text-white/40 font-bold uppercase mt-1">Todos já possuem ao menos 1 voto.</p>
-                                    </Card>
-                                )}
-                            </>
-                        )}
-
                         {isAdmin && match.status === 'open' && (
                             <Card className="bg-[#1a1a1e] border-white/5 rounded-[2rem] p-6 shadow-2xl border-none">
                                 <Textarea placeholder="Cole a lista..." className="bg-black/20 border-white/10 text-[11px] font-bold rounded-xl min-h-[150px] mb-4 text-white" value={rawList} onChange={(e) => setRawList(e.target.value)} />
