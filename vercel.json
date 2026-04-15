@@ -1,7 +1,16 @@
 {
+  "functions": {
+    "api/webhook.ts": {
+      "runtime": "vercel-node@latest"
+    }
+  },
   "rewrites": [
     {
-      "source": "/(.*)",
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
+    },
+    {
+      "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
   ]
