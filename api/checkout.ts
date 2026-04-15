@@ -29,8 +29,8 @@ export default async function handler(req: any, res: any) {
                 notification_url: "https://fut-match.vercel.app/api/webhook",
                 back_urls: {
                     success: "https://fut-match.vercel.app/?status=success",
-                    failure: "https://fut-match.vercel.app/?status=error",
-                    pending: "https://fut-match.vercel.app/?status=pending"
+                    failure: "https://fut-match.vercel.app/",
+                    pending: "https://fut-match.vercel.app/"
                 },
                 auto_return: "approved",
             }
