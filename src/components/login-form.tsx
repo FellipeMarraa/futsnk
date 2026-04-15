@@ -5,6 +5,7 @@ import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth'
 import { auth, db } from '@/lib/firebase'
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore'
 import { useToast } from "@/hooks/use-toast"
+import {useNavigate} from "react-router-dom";
 
 interface LoginFormProps {
     onBack?: () => void;
@@ -16,6 +17,17 @@ export function LoginForm({ onBack }: LoginFormProps) {
     const [needsProfile, setNeedsProfile] = useState<{ uid: string, email: string, photoURL: string, displayName: string } | null>(null)
     const [nomeEscolhido, setNomeEscolhido] = useState("")
     const { toast } = useToast()
+    const navigate = useNavigate();
+
+    const handleSuccessfulAuth = () => {
+        const redirectTo = sessionStorage.getItem('redirectAfterLogin');
+        if (redirectTo) {
+            sessionStorage.removeItem('redirectAfterLogin');
+            navigate(redirectTo);
+        } else {
+            navigate('/');
+        }
+    };
 
     const handleGoogleLogin = async () => {
         setIsGoogleLoading(true)
@@ -39,7 +51,9 @@ export function LoginForm({ onBack }: LoginFormProps) {
                     lastLogin: serverTimestamp(),
                     photoURL: user.photoURL
                 }, { merge: true })
-                toast({ title: "AUTORIZADO", description: "Bem-vindo de volta ao clube!" })
+                toast({ title: "AUTORIZADO", description: "Bem-vindo de volta ao clube!" });
+
+                handleSuccessfulAuth();
             }
         } catch (error) {
             toast({ variant: "destructive", title: "ERRO", description: "Falha na conexão com o Google." });
@@ -71,6 +85,7 @@ export function LoginForm({ onBack }: LoginFormProps) {
 
             toast({ title: "PERFIL CRIADO", description: "Sua conta foi vinculada com sucesso!" })
             setNeedsProfile(null)
+            handleSuccessfulAuth();
         } catch (error) {
             console.error(error)
             toast({ variant: "destructive", title: "ERRO", description: "Não conseguimos salvar seu nome." });

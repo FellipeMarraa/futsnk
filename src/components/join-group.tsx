@@ -11,6 +11,12 @@ export default function JoinGroup() {
     const [status, setStatus] = useState<'loading' | 'error' | 'success'>('loading');
 
     useEffect(() => {
+        if (!user && groupId) {
+            sessionStorage.setItem('redirectAfterLogin', `/join/${groupId}`);
+        }
+    }, [user, groupId]);
+
+    useEffect(() => {
         async function processJoin() {
             if (!user || !groupId) return;
 
@@ -35,13 +41,18 @@ export default function JoinGroup() {
     }, [user, groupId, navigate]);
 
     if (!user) {
+        const handleLoginRedirect = () => {
+            // Salva a URL atual (/join/ID_DO_GRUPO) para ser usada após o login
+            sessionStorage.setItem('redirectAfterLogin', window.location.pathname);
+            navigate('/login');
+        };
         return (
             <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center bg-background">
                 <Trophy className="size-12 text-primary mb-4" />
                 <h1 className="text-xl font-black uppercase italic text-white">Convite Recebido!</h1>
                 <p className="text-white/40 text-sm mt-2 mb-6">Você precisa estar logado para entrar no clube.</p>
                 <button
-                    onClick={() => navigate('/login')}
+                    onClick={handleLoginRedirect}
                     className="bg-primary px-8 py-3 rounded-xl font-black uppercase italic text-sm text-black hover:bg-primary/90 transition-colors"
                 >
                     Fazer Login
