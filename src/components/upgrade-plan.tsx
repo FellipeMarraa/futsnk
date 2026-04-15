@@ -38,14 +38,12 @@ export const UpgradePlanModal = ({ isOpen, onClose }: { isOpen: boolean; onClose
             const data = await response.json();
 
             if (data.init_point) {
-                // Abre em nova aba para não perder o racha aberto
-                window.open(data.init_point, '_blank');
+                // REDIRECIONAMENTO PARA MOBILE E DESKTOP SEGURO
+                // Usamos location.href pois navegadores mobile bloqueiam window.open após fetch
+                window.location.href = data.init_point;
 
-                // Fecha o modal e limpa o loading após 2 segundos
-                setTimeout(() => {
-                    setLoadingPlan(null);
-                    onClose();
-                }, 2000);
+                // Nota: O modal não precisa ser fechado manualmente aqui,
+                // pois a página será redirecionada.
             } else {
                 throw new Error("Ponto de início não encontrado");
             }
