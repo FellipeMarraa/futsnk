@@ -104,15 +104,15 @@ export const UpgradePlanModal = ({ isOpen, onClose }: { isOpen: boolean; onClose
                     <div className="space-y-3">
                         <div className="flex items-center gap-3 bg-white/5 p-3 rounded-xl border border-white/5">
                             <Zap className="h-4 w-4 text-primary" />
-                            <span className="text-[10px] font-bold uppercase italic">Sorteio de Times Ilimitado</span>
+                            <span className="text-[10px] font-bold uppercase italic">Sorteio de Times Ilimitado baseado no OVR de cada jogador</span>
                         </div>
                         <div className="flex items-center gap-3 bg-white/5 p-3 rounded-xl border border-white/5">
                             <ShieldCheck className="h-4 w-4 text-primary" />
-                            <span className="text-[10px] font-bold uppercase italic">Gestão de Caixa & Finanças</span>
+                            <span className="text-[10px] font-bold uppercase italic">Criação ilimitada de grupos</span>
                         </div>
                         <div className="flex items-center gap-3 bg-white/5 p-3 rounded-xl border border-white/5">
                             <Star className="h-4 w-4 text-primary" />
-                            <span className="text-[10px] font-bold uppercase italic">Estatísticas Detalhadas</span>
+                            <span className="text-[10px] font-bold uppercase italic">Estatísticas da última rodada no perfil do jogador</span>
                         </div>
                     </div>
 

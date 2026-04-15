@@ -1,18 +1,35 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { db } from "@/lib/firebase"
-import { collection, doc, getDoc, getDocs, limit, query, updateDoc, serverTimestamp } from "firebase/firestore"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { ChevronDown, Clock, Shield, Star, Target, TrendingUp, Zap, ChevronUp, Minus, AlertCircle, Ticket, Loader2, Crown, Pencil, Check, X, Lock } from "lucide-react"
+import {useEffect, useState} from "react"
+import {db} from "@/lib/firebase"
+import {collection, doc, getDoc, getDocs, limit, query, serverTimestamp, updateDoc} from "firebase/firestore"
+import {Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle} from "@/components/ui/dialog"
+import {Avatar, AvatarFallback, AvatarImage} from "@/components/ui/avatar"
+import {
+    AlertCircle,
+    Check,
+    ChevronDown,
+    ChevronUp,
+    Clock,
+    Crown,
+    Loader2,
+    Minus,
+    Pencil,
+    Shield,
+    Star,
+    Target,
+    Ticket,
+    TrendingUp,
+    X,
+    Zap
+} from "lucide-react"
 import * as VisuallyHidden from "@radix-ui/react-visually-hidden"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { applyCoupon } from "@/lib/firebase-services.ts"
-import { useToast } from "@/hooks/use-toast"
-import { useAuth } from "@/contexts/auth-context"
+import {DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger} from "@/components/ui/dropdown-menu"
+import {Button} from "@/components/ui/button"
+import {Input} from "@/components/ui/input"
+import {applyCoupon} from "@/lib/firebase-services.ts"
+import {useToast} from "@/hooks/use-toast"
+import {useAuth} from "@/contexts/auth-context"
 
 export function PlayerProfileDialog({ isOpen, onClose, user: propUser, initialGroupId, allGroups }: {
     isOpen: boolean,
@@ -22,19 +39,17 @@ export function PlayerProfileDialog({ isOpen, onClose, user: propUser, initialGr
     allGroups: any[]
 }) {
     const { toast } = useToast()
-    const { isPro: userIsPro, isSuperAdmin } = useAuth() // Status PRO global do usuário
+    const { isPro: userIsPro, isSuperAdmin } = useAuth()
 
     const [activeGroupId, setActiveGroupId] = useState(initialGroupId);
     const [stats, setStats] = useState<any>(null)
     const [lastMatchStats, setLastMatchStats] = useState<any>(null)
     const [loading, setLoading] = useState(false)
 
-    // Estados para o Sistema de Cupons
     const [couponCode, setCouponCode] = useState("")
     const [isApplying, setIsApplying] = useState(false)
     const [showCouponInput, setShowCouponInput] = useState(false)
 
-    // Estados para Edição de Nome
     const [isEditingName, setIsEditingName] = useState(false)
     const [newName, setNewName] = useState(propUser?.nomeLista || "")
     const [isSavingName, setIsSavingName] = useState(false)
@@ -42,7 +57,7 @@ export function PlayerProfileDialog({ isOpen, onClose, user: propUser, initialGr
     const activeGroup = allGroups.find(g => g.id === activeGroupId);
     const activeGroupName = activeGroup?.name || "Clube";
 
-    // Benefício PRO: Ativo se o USUÁRIO é PRO ou se o CLUBE atual é PRO
+    // O acesso PRO aqui define a estética "Elite" e libera o Raio-X Detalhado
     const hasProAccess = userIsPro || activeGroup?.isPro || isSuperAdmin;
 
     const showGroupSelector = allGroups.length > 1;
@@ -71,7 +86,6 @@ export function PlayerProfileDialog({ isOpen, onClose, user: propUser, initialGr
                     data = metaSnap.data();
                 } else {
                     const nomeBusca = propUser.nomeLista?.toLowerCase().trim() || "";
-                    // Fallback para buscar por nome se o UID não estiver vinculado no grupo
                     const playersRef = collection(db, "groups", activeGroupId, "players_meta");
                     const pSnap = await getDocs(playersRef);
                     const ghost = pSnap.docs.find(d => d.data().nomeLista?.toLowerCase().trim() === nomeBusca);
@@ -121,11 +135,7 @@ export function PlayerProfileDialog({ isOpen, onClose, user: propUser, initialGr
                             defense: (sums.defense / sums.count) * 20,
                             isMvp: lastMatch.mvp?.toLowerCase().trim() === myNameNormalized
                         });
-                    } else {
-                        setLastMatchStats(null);
                     }
-                } else {
-                    setLastMatchStats(null);
                 }
             } catch (e) {
                 console.error("Erro ao carregar perfil:", e);
@@ -142,7 +152,6 @@ export function PlayerProfileDialog({ isOpen, onClose, user: propUser, initialGr
             setIsEditingName(false);
             return;
         }
-
         setIsSavingName(true);
         try {
             const userRef = doc(db, "users", propUser.uid);
@@ -162,10 +171,8 @@ export function PlayerProfileDialog({ isOpen, onClose, user: propUser, initialGr
 
     const handleApplyCoupon = async () => {
         if (!couponCode.trim()) return;
-
         setIsApplying(true);
         try {
-            // Aplicamos o cupom ao UID do usuário (SaaS focado no usuário)
             const result = await applyCoupon(propUser.uid, couponCode);
             toast({
                 title: "CUPOM ATIVADO! 🎉",
@@ -196,7 +203,7 @@ export function PlayerProfileDialog({ isOpen, onClose, user: propUser, initialGr
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="bg-[#0c0c0e] border-white/10 p-0 overflow-hidden max-w-sm rounded-[2.5rem] outline-none shadow-2xl overflow-y-auto max-h-[90vh] custom-scrollbar">
+            <DialogContent className="bg-[#0c0c0e] border-white/10 p-0 overflow-hidden max-w-sm rounded-[2.5rem] outline-none shadow-2xl flex flex-col max-h-[90vh]">
                 <VisuallyHidden.Root>
                     <DialogHeader>
                         <DialogTitle>Perfil</DialogTitle>
@@ -204,186 +211,183 @@ export function PlayerProfileDialog({ isOpen, onClose, user: propUser, initialGr
                     </DialogHeader>
                 </VisuallyHidden.Root>
 
-                <div className="relative pt-12 pb-8 px-6 flex flex-col items-center">
-                    <div className={`absolute top-0 inset-x-0 h-32 bg-gradient-to-b ${hasProAccess ? 'from-primary/20' : 'from-white/5'} to-transparent pointer-events-none transition-all duration-700`} />
+                {/* CONTAINER COM SCROLL CUSTOMIZADO */}
+                <div className="flex-1 overflow-y-auto custom-scrollbar relative">
+                    <div className="relative pt-12 pb-8 px-6 flex flex-col items-center">
+                        <div className={`absolute top-0 inset-x-0 h-32 bg-gradient-to-b ${hasProAccess ? 'from-primary/20' : 'from-white/5'} to-transparent pointer-events-none transition-all duration-700`} />
 
-                    {/* SELETOR DE GRUPO */}
-                    <div className="absolute top-8 right-8 z-20">
-                        {showGroupSelector ? (
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                    <button className="flex items-center gap-2 bg-white/5 border border-white/10 px-4 py-2 rounded-full text-[9px] font-black uppercase italic text-white hover:bg-white/10 transition-all">
-                                        {activeGroupName} <ChevronDown className="size-3 text-primary" />
-                                    </button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end" className="bg-[#1a1a1e] border-white/10 text-white min-w-[140px] rounded-xl shadow-2xl">
-                                    {allGroups.map((group) => (
-                                        <DropdownMenuItem
-                                            key={group.id}
-                                            onClick={() => setActiveGroupId(group.id)}
-                                            className="text-[9px] font-black uppercase italic py-2 cursor-pointer focus:bg-primary focus:text-black"
-                                        >
-                                            {group.name}
-                                        </DropdownMenuItem>
-                                    ))}
-                                </DropdownMenuContent>
-                            </DropdownMenu>
-                        ) : allGroups.length === 1 && (
-                            <div className="bg-white/5 border border-white/10 px-4 py-2 rounded-full text-[9px] font-black uppercase italic text-white/40">
-                                {activeGroupName}
-                            </div>
-                        )}
-                    </div>
-
-                    {/* OVR DISPLAY */}
-                    <div className="absolute top-8 left-8 flex flex-col items-center">
-                        <span className={`text-4xl font-black italic tracking-tighter leading-none transition-colors ${hasProAccess ? 'text-primary' : 'text-white'}`}>
-                            {calculateOVR(stats)}
-                        </span>
-                        <span className="text-[10px] font-black text-primary uppercase tracking-widest">OVR</span>
-                    </div>
-
-                    <Avatar className={`size-32 border-4 mb-4 bg-zinc-900 transition-all duration-500 ${hasProAccess ? 'border-primary shadow-[0_0_40px_rgba(234,255,0,0.2)]' : 'border-white/10'}`}>
-                        <AvatarImage src={propUser?.photoURL} className="object-cover" />
-                        <AvatarFallback className="bg-zinc-800 text-white font-black text-5xl italic uppercase">
-                            {propUser?.nomeLista?.[0] || "U"}
-                        </AvatarFallback>
-                    </Avatar>
-
-                    {/* NOME EDITÁVEL */}
-                    <div className="flex flex-col items-center w-full px-4 mb-1">
-                        {isEditingName ? (
-                            <div className="flex items-center gap-2 w-full animate-in fade-in zoom-in-95 duration-200">
-                                <Input
-                                    value={newName}
-                                    onChange={(e) => setNewName(e.target.value)}
-                                    className="bg-white/5 border-primary/30 h-9 text-center font-black italic uppercase text-white rounded-xl focus:ring-1 focus:ring-primary/50"
-                                    autoFocus
-                                />
-                                <button onClick={handleUpdateName} disabled={isSavingName} className="p-2 bg-primary rounded-xl text-black">
-                                    {isSavingName ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4 stroke-[3px]" />}
-                                </button>
-                                <button onClick={() => setIsEditingName(false)} className="p-2 bg-white/5 rounded-xl text-white/40">
-                                    <X className="size-4 stroke-[3px]" />
-                                </button>
-                            </div>
-                        ) : (
-                            <div className="flex items-center gap-2 group cursor-pointer" onClick={() => setIsEditingName(true)}>
-                                <h2 className="text-2xl font-black italic uppercase text-white tracking-tighter leading-none">
-                                    {propUser?.nomeLista}
-                                </h2>
-                                <Pencil className="size-3 text-white/20 group-hover:text-primary transition-colors" />
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="mb-8">
-                        {hasProAccess ? (
-                            <div className="flex items-center gap-1.5 bg-primary/10 border border-primary/20 px-3 py-1 rounded-full animate-pulse">
-                                <Crown className="size-2.5 text-primary fill-primary" />
-                                <span className="text-[8px] font-black text-primary uppercase tracking-widest">Acesso Elite Ativado</span>
-                            </div>
-                        ) : (
-                            <p className="text-[9px] font-bold text-white/30 uppercase tracking-[0.4em]">
-                                {loading ? "Sincronizando..." : "Estatísticas da Temporada"}
-                            </p>
-                        )}
-                    </div>
-
-                    {/* ATRIBUTOS */}
-                    <div className="w-full grid grid-cols-2 gap-2 mb-8 relative">
-                        {!hasProAccess && (
-                            <div className="absolute inset-0 z-10 bg-black/40 backdrop-blur-[2px] rounded-xl flex items-center justify-center border border-white/5">
-                                <div className="flex flex-col items-center gap-1">
-                                    <Lock className="size-4 text-primary opacity-50" />
-                                    <span className="text-[7px] font-black text-primary uppercase tracking-tighter">Atributos PRO</span>
-                                </div>
-                            </div>
-                        )}
-                        <AttributeItem label="Técnica" value={stats?.technique} lastRoundValue={lastMatchStats?.technique} icon={<TrendingUp className="size-3" />} />
-                        <AttributeItem label="Chute" value={stats?.finishing} lastRoundValue={lastMatchStats?.finishing} icon={<Target className="size-3" />} />
-                        <AttributeItem label="Velocidade" value={stats?.speed} lastRoundValue={lastMatchStats?.speed} icon={<Zap className="size-3" />} />
-                        <AttributeItem label="Defesa" value={stats?.defense} lastRoundValue={lastMatchStats?.defense} icon={<Shield className="size-3" />} />
-                    </div>
-
-                    {/* ÚLTIMA ATUAÇÃO */}
-                    <div className="w-full bg-white/[0.03] rounded-[2rem] p-5 border border-white/5 shadow-inner mb-6 relative overflow-hidden">
-                        {!hasProAccess && (
-                            <div className="absolute inset-0 z-10 bg-black/60 backdrop-blur-[4px] flex flex-col items-center justify-center text-center p-4">
-                                <Crown className="size-6 text-primary mb-2 opacity-50" />
-                                <h5 className="text-[9px] font-black text-white uppercase italic">Raio-X Bloqueado</h5>
-                                <p className="text-[7px] text-white/40 uppercase font-bold mt-1">Disponível apenas em Clubes PRO</p>
-                            </div>
-                        )}
-                        <div className="flex items-center justify-between mb-4">
-                            <h4 className="text-[9px] font-black text-white/40 uppercase tracking-[0.2em] flex items-center gap-2">
-                                <Clock className="size-3 text-primary" /> Última Atuação
-                            </h4>
-                            {lastMatchStats?.isMvp && (
-                                <div className="flex items-center gap-1 bg-primary/20 px-2 py-0.5 rounded-full border border-primary/30">
-                                    <Star className="size-2.5 text-primary fill-primary" />
-                                    <span className="text-[8px] font-black text-primary uppercase italic">MVP</span>
+                        {/* SELETOR DE GRUPO */}
+                        <div className="absolute top-8 right-8 z-20">
+                            {showGroupSelector ? (
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                        <button className="flex items-center gap-2 bg-white/5 border border-white/10 px-4 py-2 rounded-full text-[9px] font-black uppercase italic text-white hover:bg-white/10 transition-all">
+                                            {activeGroupName} <ChevronDown className="size-3 text-primary" />
+                                        </button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end" className="bg-[#1a1a1e] border-white/10 text-white min-w-[140px] rounded-xl shadow-2xl">
+                                        {allGroups.map((group) => (
+                                            <DropdownMenuItem
+                                                key={group.id}
+                                                onClick={() => setActiveGroupId(group.id)}
+                                                className="text-[9px] font-black uppercase italic py-2 cursor-pointer focus:bg-primary focus:text-black"
+                                            >
+                                                {group.name}
+                                            </DropdownMenuItem>
+                                        ))}
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
+                            ) : allGroups.length === 1 && (
+                                <div className="bg-white/5 border border-white/10 px-4 py-2 rounded-full text-[9px] font-black uppercase italic text-white/40">
+                                    {activeGroupName}
                                 </div>
                             )}
                         </div>
 
-                        {lastMatchStats ? (
-                            <div className="space-y-3">
-                                <RatingRow label="Técnica" value={lastMatchStats.technique / 20} />
-                                <RatingRow label="Velocidade" value={lastMatchStats.speed / 20} />
-                                <RatingRow label="Chute" value={lastMatchStats.finishing / 20} />
-                                <RatingRow label="Defesa" value={lastMatchStats.defense / 20} />
-                            </div>
-                        ) : (
-                            <div className="flex flex-col items-center py-4 opacity-20 text-center">
-                                <AlertCircle className="size-5 mb-2" />
-                                <p className="text-[8px] uppercase italic font-bold tracking-widest">Sem dados nesta rodada</p>
-                            </div>
-                        )}
-                    </div>
+                        {/* OVR DISPLAY */}
+                        <div className="absolute top-8 left-8 flex flex-col items-center">
+                            <span className={`text-4xl font-black italic tracking-tighter leading-none transition-colors ${hasProAccess ? 'text-primary' : 'text-white'}`}>
+                                {calculateOVR(stats)}
+                            </span>
+                            <span className="text-[10px] font-black text-primary uppercase tracking-widest">OVR</span>
+                        </div>
 
-                    {/* SEÇÃO DE CUPOM */}
-                    <div className="w-full border-t border-white/5 pt-6 text-center">
-                        {!showCouponInput ? (
-                            <button
-                                onClick={() => setShowCouponInput(true)}
-                                className="flex items-center justify-center gap-2 mx-auto text-[9px] font-black text-white/30 uppercase italic tracking-widest hover:text-primary transition-colors py-2"
-                            >
-                                <Ticket className="size-3" /> Possui um cupom de acesso?
-                            </button>
-                        ) : (
-                            <div className="animate-in fade-in slide-in-from-top-2 duration-300">
-                                <div className="flex items-center gap-2 mb-4 justify-center">
-                                    <Ticket className="size-3 text-primary" />
-                                    <h4 className="text-[10px] font-black text-white uppercase italic tracking-wider">Resgatar Cupom</h4>
-                                </div>
-                                <div className="flex gap-2">
+                        <Avatar className={`size-32 border-4 mb-4 bg-zinc-900 transition-all duration-500 ${hasProAccess ? 'border-primary shadow-[0_0_40px_rgba(234,255,0,0.2)]' : 'border-white/10'}`}>
+                            <AvatarImage src={propUser?.photoURL} className="object-cover" />
+                            <AvatarFallback className="bg-zinc-800 text-white font-black text-5xl italic uppercase">
+                                {propUser?.nomeLista?.[0] || "U"}
+                            </AvatarFallback>
+                        </Avatar>
+
+                        {/* NOME EDITÁVEL */}
+                        <div className="flex flex-col items-center w-full px-4 mb-1">
+                            {isEditingName ? (
+                                <div className="flex items-center gap-2 w-full animate-in fade-in zoom-in-95 duration-200">
                                     <Input
-                                        placeholder="CÓDIGO"
-                                        value={couponCode}
-                                        onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
-                                        className="h-10 bg-white/5 border-white/10 rounded-xl text-[10px] font-bold tracking-[0.2em] focus:ring-1 focus:ring-primary/50 uppercase text-white"
+                                        value={newName}
+                                        onChange={(e) => setNewName(e.target.value)}
+                                        className="bg-white/5 border-primary/30 h-9 text-center font-black italic uppercase text-white rounded-xl focus:ring-1 focus:ring-primary/50"
                                         autoFocus
                                     />
-                                    <Button
-                                        onClick={handleApplyCoupon}
-                                        disabled={isApplying || !couponCode.trim()}
-                                        className="h-10 bg-primary text-black font-black text-[9px] uppercase italic rounded-xl px-4"
-                                    >
-                                        {isApplying ? <Loader2 className="size-3 animate-spin" /> : "ATIVAR"}
-                                    </Button>
+                                    <button onClick={handleUpdateName} disabled={isSavingName} className="p-2 bg-primary rounded-xl text-black">
+                                        {isSavingName ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4 stroke-[3px]" />}
+                                    </button>
+                                    <button onClick={() => setIsEditingName(false)} className="p-2 bg-white/5 rounded-xl text-white/40">
+                                        <X className="size-4 stroke-[3px]" />
+                                    </button>
                                 </div>
-                                <button
-                                    onClick={() => setShowCouponInput(false)}
-                                    className="mt-3 text-[8px] font-black text-white/20 uppercase hover:text-white/40"
-                                >
-                                    Cancelar
-                                </button>
+                            ) : (
+                                <div className="flex items-center gap-2 group cursor-pointer" onClick={() => setIsEditingName(true)}>
+                                    <h2 className="text-2xl font-black italic uppercase text-white tracking-tighter leading-none">
+                                        {propUser?.nomeLista}
+                                    </h2>
+                                    <Pencil className="size-3 text-white/20 group-hover:text-primary transition-colors" />
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="mb-8">
+                            {hasProAccess ? (
+                                <div className="flex items-center gap-1.5 bg-primary/10 border border-primary/20 px-3 py-1 rounded-full animate-pulse">
+                                    <Crown className="size-2.5 text-primary fill-primary" />
+                                    <span className="text-[8px] font-black text-primary uppercase tracking-widest">Acesso Elite Ativado</span>
+                                </div>
+                            ) : (
+                                <p className="text-[9px] font-bold text-white/30 uppercase tracking-[0.4em]">
+                                    {loading ? "Sincronizando..." : "Estatísticas da Temporada"}
+                                </p>
+                            )}
+                        </div>
+
+                        {/* ATRIBUTOS - Sempre Visíveis para o Dono */}
+                        <div className="w-full grid grid-cols-2 gap-2 mb-8 relative">
+                            <AttributeItem label="Técnica" value={stats?.technique} lastRoundValue={lastMatchStats?.technique} icon={<TrendingUp className="size-3" />} />
+                            <AttributeItem label="Chute" value={stats?.finishing} lastRoundValue={lastMatchStats?.finishing} icon={<Target className="size-3" />} />
+                            <AttributeItem label="Velocidade" value={stats?.speed} lastRoundValue={lastMatchStats?.speed} icon={<Zap className="size-3" />} />
+                            <AttributeItem label="Defesa" value={stats?.defense} lastRoundValue={lastMatchStats?.defense} icon={<Shield className="size-3" />} />
+                        </div>
+
+                        {/* ÚLTIMA ATUAÇÃO - Bloqueio apenas estético para quem não é PRO */}
+                        <div className={`w-full rounded-[2rem] p-5 border shadow-inner mb-6 relative overflow-hidden transition-all ${hasProAccess ? 'bg-white/[0.03] border-white/5' : 'bg-white/[0.01] border-dashed border-white/10'}`}>
+                            {!hasProAccess && (
+                                <div className="absolute inset-0 z-10 bg-black/60 backdrop-blur-[4px] flex flex-col items-center justify-center text-center p-4">
+                                    <Crown className="size-6 text-primary mb-2 opacity-50" />
+                                    <h5 className="text-[9px] font-black text-white uppercase italic">Raio-X Bloqueado</h5>
+                                    <p className="text-[7px] text-white/40 uppercase font-bold mt-1">Disponível apenas em Clubes PRO</p>
+                                </div>
+                            )}
+
+                            <div className="flex items-center justify-between mb-4">
+                                <h4 className="text-[9px] font-black text-white/40 uppercase tracking-[0.2em] flex items-center gap-2">
+                                    <Clock className="size-3 text-primary" /> Última Atuação
+                                </h4>
+                                {lastMatchStats?.isMvp && (
+                                    <div className="flex items-center gap-1 bg-primary/20 px-2 py-0.5 rounded-full border border-primary/30">
+                                        <Star className="size-2.5 text-primary fill-primary" />
+                                        <span className="text-[8px] font-black text-primary uppercase italic">MVP</span>
+                                    </div>
+                                )}
                             </div>
-                        )}
+
+                            {lastMatchStats ? (
+                                <div className="space-y-3">
+                                    <RatingRow label="Técnica" value={lastMatchStats.technique / 20} />
+                                    <RatingRow label="Velocidade" value={lastMatchStats.speed / 20} />
+                                    <RatingRow label="Chute" value={lastMatchStats.finishing / 20} />
+                                    <RatingRow label="Defesa" value={lastMatchStats.defense / 20} />
+                                </div>
+                            ) : (
+                                <div className="flex flex-col items-center py-4 opacity-20 text-center">
+                                    <AlertCircle className="size-5 mb-2" />
+                                    <p className="text-[8px] uppercase italic font-bold tracking-widest">Sem dados nesta rodada</p>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* SEÇÃO DE CUPOM */}
+                        <div className="w-full border-t border-white/5 pt-6 text-center">
+                            {!showCouponInput ? (
+                                <button
+                                    onClick={() => setShowCouponInput(true)}
+                                    className="flex items-center justify-center gap-2 mx-auto text-[9px] font-black text-white/30 uppercase italic tracking-widest hover:text-primary transition-colors py-2"
+                                >
+                                    <Ticket className="size-3" /> Possui um cupom de acesso?
+                                </button>
+                            ) : (
+                                <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+                                    <div className="flex items-center gap-2 mb-4 justify-center">
+                                        <Ticket className="size-3 text-primary" />
+                                        <h4 className="text-[10px] font-black text-white uppercase italic tracking-wider">Resgatar Cupom</h4>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <Input
+                                            placeholder="CÓDIGO"
+                                            value={couponCode}
+                                            onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                                            className="h-10 bg-white/5 border-white/10 rounded-xl text-[10px] font-bold tracking-[0.2em] focus:ring-1 focus:ring-primary/50 uppercase text-white"
+                                            autoFocus
+                                        />
+                                        <Button
+                                            onClick={handleApplyCoupon}
+                                            disabled={isApplying || !couponCode.trim()}
+                                            className="h-10 bg-primary text-black font-black text-[9px] uppercase italic rounded-xl px-4"
+                                        >
+                                            {isApplying ? <Loader2 className="size-3 animate-spin" /> : "ATIVAR"}
+                                        </Button>
+                                    </div>
+                                    <button
+                                        onClick={() => setShowCouponInput(false)}
+                                        className="mt-3 text-[8px] font-black text-white/20 uppercase hover:text-white/40"
+                                    >
+                                        Cancelar
+                                    </button>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
-                <div className="h-2 w-full bg-primary/20" />
+                {/* BARRA INFERIOR FIXA */}
+                <div className="h-2 w-full bg-primary/20 shrink-0" />
             </DialogContent>
         </Dialog>
     )
