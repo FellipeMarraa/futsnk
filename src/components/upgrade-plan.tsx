@@ -18,22 +18,45 @@ export const UpgradePlanModal = ({ isOpen, onClose }: { isOpen: boolean; onClose
     const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
     const [isRedeeming, setIsRedeeming] = useState(false);
 
-    const handlePayment = (planType: 'mensal' | 'anual') => {
+    // Dentro do UpgradePlanModal.tsx
+
+    const handlePayment = async (planType: 'mensal' | 'anual', price: number) => {
         if (!user?.uid) return;
         setLoadingPlan(planType);
 
-        const MP_LINK = `https://mpago.la/2As7j9m?external_reference=${user.uid}`;
+        try {
+            const response = await fetch('/api/checkout', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    userId: user.uid,
+                    planType,
+                    price
+                }),
+            });
 
-        window.open(MP_LINK, '_blank');
+            const data = await response.json();
 
-        toast({
-            title: "CHECKOUT ABERTO",
-            description: "Conclua o pagamento na nova aba para liberar seu acesso.",
-        });
+            if (data.init_point) {
+                // Abre em nova aba para não perder o racha aberto
+                window.open(data.init_point, '_blank');
 
-        setTimeout(() => {
+                // Fecha o modal e limpa o loading após 2 segundos
+                setTimeout(() => {
+                    setLoadingPlan(null);
+                    onClose();
+                }, 2000);
+            } else {
+                throw new Error("Ponto de início não encontrado");
+            }
+        } catch (error) {
+            toast({
+                title: "Erro",
+                description: "Não foi possível gerar o link de pagamento.",
+                variant: "destructive"
+            });
             setLoadingPlan(null);
-        }, 3000);
+        }
     };
 
     const handleRedeem = async () => {
@@ -96,7 +119,7 @@ export const UpgradePlanModal = ({ isOpen, onClose }: { isOpen: boolean; onClose
                     {/* Botão de Compra - Plano Mensal */}
                     <Button
                         className="w-full bg-primary hover:bg-primary/90 text-black h-16 rounded-2xl flex flex-col items-center justify-center gap-0 shadow-[0_0_30px_rgba(234,255,0,0.15)] transition-all active:scale-95"
-                        onClick={() => handlePayment('mensal')}
+                        onClick={() => handlePayment('mensal', 19.90)}
                         disabled={loadingPlan !== null || isRedeeming}
                     >
                         {loadingPlan === 'mensal' ? (
