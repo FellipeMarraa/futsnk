@@ -4,6 +4,7 @@ import Home from "@/home.tsx";
 import JoinGroup from "@/components/join-group.tsx";
 import { AdminSupremo } from "@/components/admin-supremo.tsx";
 import { GlobalAlert } from "@/components/global-alert.tsx";
+import {PaymentSuccess} from "@/components/payment-success.tsx";
 
 function App() {
     return (
@@ -25,6 +26,8 @@ function App() {
 
                     {/* Redirecionamento de erro ou 404 (opcional) */}
                     <Route path="*" element={<Home />} />
+
+                    <Route path="/payment-success" element={<PaymentSuccess />} />
                 </Routes>
             </BrowserRouter>
         </AuthProvider>

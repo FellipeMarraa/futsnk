@@ -18,33 +18,24 @@ export const UpgradePlanModal = ({ isOpen, onClose }: { isOpen: boolean; onClose
     const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
     const [isRedeeming, setIsRedeeming] = useState(false);
 
-    // Lógica de Pagamento (Mercado Pago)
-    const handlePayment = async (planType: 'mensal' | 'anual') => {
+    const handlePayment = (planType: 'mensal' | 'anual') => {
         if (!user?.uid) return;
         setLoadingPlan(planType);
 
-        try {
-            // Em vez de fetch para a API que está dando 405,
-            // mandamos o usuário para o checkout oficial do Mercado Pago.
-            // Opcional: Adicionamos o UID do usuário na URL para você saber quem pagou no painel do MP
-            const MP_LINK = `https://mpago.la/2As7j9m?external_reference=${user.uid}`;
+        const MP_LINK = `https://mpago.la/2As7j9m?external_reference=${user.uid}`;
 
-            // Simulamos um pequeno delay para o loader dar feedback visual
-            setTimeout(() => {
-                window.location.href = MP_LINK;
-            }, 800);
+        window.open(MP_LINK, '_blank');
 
-        } catch (error) {
-            toast({
-                title: "Erro no Checkout",
-                description: "Tente novamente em instantes.",
-                variant: "destructive"
-            });
+        toast({
+            title: "CHECKOUT ABERTO",
+            description: "Conclua o pagamento na nova aba para liberar seu acesso.",
+        });
+
+        setTimeout(() => {
             setLoadingPlan(null);
-        }
+        }, 3000);
     };
 
-    // Lógica de Resgate de Cupom
     const handleRedeem = async () => {
         if (!couponInput.trim() || !user?.uid) return;
 
