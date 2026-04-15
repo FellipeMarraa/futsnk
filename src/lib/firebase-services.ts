@@ -37,7 +37,7 @@ export const getGroupById = async (id: string) => {
 };
 
 export const isUserAdmin = (group: any, user: any): boolean => {
-  if (!user) return false;
+  if (!group || !user) return false;
   if (user.isSuperAdmin) return true;
   const isOwner = group.ownerId === user.uid;
   const isExplicitAdmin = group.adminsEmails?.includes(user.email?.toLowerCase());

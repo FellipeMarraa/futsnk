@@ -124,26 +124,31 @@ export function GroupDetail({ groupId, onBack }: GroupDetailProps) {
 
     const fetchData = async () => {
         try {
-            setLoading(true)
+            setLoading(true);
+            setError(null); // Limpa erro anterior
             const data = await getGroupById(groupId) as any;
-            if (!data) {
-                setError("Grupo não encontrado")
-            } else {
-                setGroup(data)
 
-                if (data.ownerId) {
-                    const ownerSnap = await getDoc(doc(db, "users", data.ownerId));
-                    if (ownerSnap.exists()) {
-                        setOwnerData(ownerSnap.data());
-                    }
+            if (!data) {
+                setError("Grupo não encontrado");
+                return; // Interrompe se não houver dados
+            }
+
+            setGroup(data);
+
+            // Busca o status do dono somente se o grupo existir
+            if (data.ownerId) {
+                const ownerSnap = await getDoc(doc(db, "users", data.ownerId));
+                if (ownerSnap.exists()) {
+                    setOwnerData(ownerSnap.data());
                 }
             }
         } catch (err) {
-            setError("Erro ao carregar dados")
+            console.error("Erro ao carregar:", err);
+            setError("Erro ao carregar dados");
         } finally {
-            setLoading(false)
+            setLoading(false);
         }
-    }
+    };
 
     useEffect(() => {
         fetchData()
