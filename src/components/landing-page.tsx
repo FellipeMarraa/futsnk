@@ -1,5 +1,5 @@
-import { Button } from "@/components/ui/button"
-import { Trophy, Users, Zap, BarChart3, ChevronRight } from "lucide-react"
+import {Button} from "@/components/ui/button"
+import {BarChart3, ChevronRight, Trophy, Users} from "lucide-react"
 
 export function LandingPage({ onStart }: { onStart: () => void }) {
     return (
@@ -15,11 +15,6 @@ export function LandingPage({ onStart }: { onStart: () => void }) {
             </nav>
 
             <section className="px-6 pt-20 pb-32 max-w-7xl mx-auto text-center">
-                <div className="inline-flex items-center gap-2 bg-white/5 border border-white/10 px-4 py-1.5 rounded-full mb-8">
-                    <Zap className="size-3 text-primary fill-primary" />
-                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-primary">Sorteio Inteligente v3.0</span>
-                </div>
-
                 <h1 className="text-5xl md:text-7xl font-black italic uppercase tracking-tighter leading-[0.9] mb-8">
                     TRANSFORME SEU <br /> <span className="text-primary">RACHA EM LIGA</span>
                 </h1>

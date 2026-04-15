@@ -204,15 +204,15 @@ export function Dashboard({ onSelectGroup }: { onSelectGroup: (groupId: string) 
                     </div>
 
                     <div className="flex items-center gap-2">
-                        {!isPro && (
-                            <Button
-                                onClick={() => setIsUpgradeModalOpen(true)}
-                                variant="ghost"
-                                className="text-primary text-[9px] font-black uppercase italic gap-2 hover:bg-primary/10 transition-all"
-                            >
-                                <Crown size={14} /> Seja PRO
-                            </Button>
-                        )}
+                        {/*{!isPro && (*/}
+                        {/*    <Button*/}
+                        {/*        onClick={() => setIsUpgradeModalOpen(true)}*/}
+                        {/*        variant="ghost"*/}
+                        {/*        className="text-primary text-[9px] font-black uppercase italic gap-2 hover:bg-primary/10 transition-all"*/}
+                        {/*    >*/}
+                        {/*        <Crown size={14} /> Seja PRO*/}
+                        {/*    </Button>*/}
+                        {/*)}*/}
 
                         <Button
                             onClick={handleAddGroupClick}
